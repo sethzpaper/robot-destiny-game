@@ -1,10 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Supabase URL or Anon Key is missing in environment variables.');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Deprecated: frontend ไม่ติดต่อ Supabase ตรงอีกต่อไป
+// ทุก request ผ่าน Express backend ที่ /api/* (ดู src/services/supabaseService.ts)
+export const supabase = null as any;
