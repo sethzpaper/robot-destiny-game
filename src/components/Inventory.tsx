@@ -21,7 +21,7 @@ const Inventory: React.FC<InventoryProps> = ({ categories, t }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
-  const limit = 12;
+  const limit = 30;
 
   const observer = useRef<IntersectionObserver | null>(null);
   const lastElementRef = useCallback((node: HTMLDivElement | null) => {

@@ -31,7 +31,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [items, setItems] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const itemsPerPage = 10;
+  const itemsPerPage = 30;
 
   const tabs = [
     { id: 'devices', label: 'อุปกรณ์', icon: Package, sheet: 'Devices' },

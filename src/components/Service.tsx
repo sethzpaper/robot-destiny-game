@@ -1,16 +1,18 @@
-import React, { useState, useMemo } from 'react';
-import { Device, TranslationKey } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Device, Category, TranslationKey } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Wrench, Search, Package, AlertCircle, CheckCircle, Camera, Send, RefreshCw, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ServiceProps {
   devices: Device[];
+  categories: Category[];
   t: (key: TranslationKey) => string;
 }
 
-const Service: React.FC<ServiceProps> = ({ devices, t }) => {
+const Service: React.FC<ServiceProps> = ({ categories, t }) => {
   const [searchDevice, setSearchDevice] = useState('');
+  const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [issueType, setIssueType] = useState('');
   const [details, setDetails] = useState('');
@@ -19,13 +21,23 @@ const Service: React.FC<ServiceProps> = ({ devices, t }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const filteredDevices = useMemo(() => {
-    if (searchDevice.length < 2) return [];
-    return devices.filter(d => 
-      d.name.toLowerCase().includes(searchDevice.toLowerCase()) ||
-      d.serial_number.toLowerCase().includes(searchDevice.toLowerCase())
-    ).slice(0, 5);
-  }, [devices, searchDevice]);
+  useEffect(() => {
+    if (searchDevice.length < 2) {
+      setFilteredDevices([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      const res = await supabaseService.read('Devices', { searchTerm: searchDevice, limit: 30 });
+      if (res.success) {
+        const enriched = (res.items as Device[]).map(d => {
+          const cat = categories.find(c => c.category === d.category_id);
+          return { ...d, name: cat?.name || 'Unknown Device', categoryName: cat?.name, imageUrl: cat?.imageUrl };
+        });
+        setFilteredDevices(enriched);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchDevice, categories]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

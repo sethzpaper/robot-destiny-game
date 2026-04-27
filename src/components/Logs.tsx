@@ -12,7 +12,7 @@ interface LogsProps {
 const Logs: React.FC<LogsProps> = ({ logs, t }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 30;
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => 

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Device, Student, DeviceStatus, TranslationKey, User as UserType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Device, Student, DeviceStatus, TranslationKey, User as UserType, Category } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { Search, User, Package, Calendar, CheckCircle, AlertCircle, RefreshCw, ArrowRight, ArrowLeft, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,39 +7,68 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface BorrowReturnProps {
   devices: Device[];
   students: Student[];
+  categories: Category[];
   currentUser: UserType | null;
   onRefresh: () => void;
   t: (key: TranslationKey) => string;
 }
 
-const BorrowReturn: React.FC<BorrowReturnProps> = ({ devices, students, currentUser, onRefresh, t }) => {
+const BorrowReturn: React.FC<BorrowReturnProps> = ({ categories, currentUser, onRefresh, t }) => {
   const [activeMode, setActiveMode] = useState<'borrow' | 'return'>('borrow');
   const [step, setStep] = useState(1);
   const [searchStudent, setSearchStudent] = useState('');
   const [searchDevice, setSearchDevice] = useState('');
+  const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
+  const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
+  const [searchingStudents, setSearchingStudents] = useState(false);
+  const [searchingDevices, setSearchingDevices] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const filteredStudents = useMemo(() => {
-    if (searchStudent.length < 2) return [];
-    return students.filter(s => 
-      s.fullName.toLowerCase().includes(searchStudent.toLowerCase()) ||
-      s.studentId.includes(searchStudent)
-    ).slice(0, 5);
-  }, [students, searchStudent]);
+  useEffect(() => {
+    if (searchStudent.length < 2) {
+      setFilteredStudents([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearchingStudents(true);
+      try {
+        const res = await supabaseService.read('Students', { searchTerm: searchStudent, limit: 30 });
+        if (res.success) setFilteredStudents(res.items as Student[]);
+      } finally {
+        setSearchingStudents(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchStudent]);
 
-  const filteredDevices = useMemo(() => {
-    if (searchDevice.length < 2) return [];
-    const availableDevices = devices.filter(d => 
-      activeMode === 'borrow' ? d.status === DeviceStatus.Available : d.status === DeviceStatus.Borrowed
-    );
-    return availableDevices.filter(d => 
-      (d.name || '').toLowerCase().includes(searchDevice.toLowerCase()) ||
-      d.serial_number.toLowerCase().includes(searchDevice.toLowerCase())
-    ).slice(0, 5);
-  }, [devices, searchDevice, activeMode]);
+  useEffect(() => {
+    if (searchDevice.length < 2) {
+      setFilteredDevices([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearchingDevices(true);
+      try {
+        const res = await supabaseService.read('Devices', { searchTerm: searchDevice, limit: 30 });
+        if (res.success) {
+          const wanted = activeMode === 'borrow' ? DeviceStatus.Available : DeviceStatus.Borrowed;
+          const enriched = (res.items as Device[])
+            .filter(d => d.status === wanted)
+            .map(d => {
+              const cat = categories.find(c => c.category === d.category_id);
+              return { ...d, name: cat?.name || 'Unknown Device', categoryName: cat?.name, imageUrl: cat?.imageUrl };
+            });
+          setFilteredDevices(enriched);
+        }
+      } finally {
+        setSearchingDevices(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchDevice, activeMode, categories]);
 
   const handleAction = async () => {
     if (!selectedStudent || !selectedDevice) return;

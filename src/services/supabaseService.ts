@@ -36,31 +36,27 @@ export const supabaseService = {
     }
 
     try {
-      let query = supabase.from(targetTable).select('*');
+      let query = supabase.from(targetTable).select('*', { count: 'exact' });
 
-      // Handle pagination
-      if (options.limit) {
-        const from = options.offset || 0;
-        const to = from + options.limit - 1;
-        query = query.range(from, to);
-      }
+      const effectiveLimit = options.limit ?? 100;
+      const from = options.offset || 0;
+      const to = from + effectiveLimit - 1;
+      query = query.range(from, to);
 
-      // Handle search (simple implementation)
       if (options.searchTerm) {
-        // This is a bit complex in Supabase for generic search across all fields
-        // For now, we'll just search in common fields or return all and filter client-side if needed
-        // But let's try a basic text search if it's a known table
+        const term = String(options.searchTerm).replace(/[%,]/g, '');
         if (targetTable === 'devices') {
-          query = query.or(`serial_number.ilike.%${options.searchTerm}%,id.ilike.%${options.searchTerm}%`);
+          query = query.or(`serial_number.ilike.%${term}%,id.ilike.%${term}%`);
         } else if (targetTable === 'students') {
-          query = query.or(`full_name.ilike.%${options.searchTerm}%,student_id.ilike.%${options.searchTerm}%`);
+          query = query.or(`full_name.ilike.%${term}%,student_id.ilike.%${term}%`);
+        } else if (targetTable === 'teachers') {
+          query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%`);
         }
       }
 
-      // Handle specific filters for students
-      if (tableName === 'StudentsM4') query = query.eq('grade', '4');
-      if (tableName === 'StudentsM5') query = query.eq('grade', '5');
-      if (tableName === 'StudentsM6') query = query.eq('grade', '6');
+      if (tableName === 'StudentsM4') query = query.eq('grade', 4);
+      if (tableName === 'StudentsM5') query = query.eq('grade', 5);
+      if (tableName === 'StudentsM6') query = query.eq('grade', 6);
 
       const { data, error, count } = await query;
 

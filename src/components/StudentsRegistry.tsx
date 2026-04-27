@@ -15,7 +15,7 @@ const StudentsRegistry: React.FC<StudentsRegistryProps> = ({ students, teachers,
   const [selectedGrade, setSelectedGrade] = useState<string>('4');
   const [selectedRoom, setSelectedRoom] = useState<string>('1');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
+  const itemsPerPage = 30;
 
   const filteredStudents = useMemo(() => {
     return students.filter(student => {
