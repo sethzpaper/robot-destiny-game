@@ -1,164 +1,150 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ShieldCheck, 
-  Wrench, 
-  Info, 
-  BookOpen, 
-  Phone, 
-  Mail, 
-  Globe,
-  LayoutDashboard,
-  ChevronDown
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useState } from 'react';
+import { Tablet, MessageCircle, Phone, MessageSquare, LogIn } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface LandingPageProps {
-  onStart: () => void;
-  onAdminLogin: () => void;
+  onStart: () => void;        // → catalog (no login)
+  onAdminLogin: () => void;   // → login screen
 }
 
+type HealthStatus = 'ok' | 'degraded' | 'down' | 'checking';
+
 const LandingPage: React.FC<LandingPageProps> = ({ onStart, onAdminLogin }) => {
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [health, setHealth] = useState<HealthStatus>('checking');
 
   useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    let alive = true;
+    const check = async () => {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        const r = await fetch('/api/health', { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!r.ok) throw new Error('http');
+        const data = await r.json();
+        if (!alive) return;
+        setHealth(data.ok && data.db ? 'ok' : 'degraded');
+      } catch {
+        if (alive) setHealth('down');
+      }
+    };
+    check();
+    const id = setInterval(check, 30000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
-  const scrollToFooter = () => {
-    const footer = document.querySelector('footer');
-    footer?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  const statusConfig = {
+    checking: { color: 'bg-gray-400', label: 'กำลังตรวจสอบ' },
+    ok:       { color: 'bg-green-500', label: 'ใช้งานได้' },
+    degraded: { color: 'bg-yellow-400', label: 'บางส่วนขัดข้อง' },
+    down:     { color: 'bg-red-500', label: 'ขัดข้อง' },
+  }[health];
   return (
-    <div className="min-h-screen bg-white font-sarabun selection:bg-spk-yellow selection:text-spk-blue">
+    <div className="min-h-screen bg-spk-blue text-white font-sarabun flex flex-col">
       {/* Navigation */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-lg py-3' : 'bg-transparent py-6'}`}>
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-4 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-12 h-12 bg-spk-yellow rounded-2xl flex items-center justify-center shadow-lg shadow-spk-yellow/20">
-              <img src="https://www.spk.ac.th/home/wp-content/uploads/2025/10/spk-logo-png-new-1.png" alt="SPK Logo" className="w-8 h-8" referrerPolicy="no-referrer" />
-            </div>
-            <div className={isScrolled ? 'text-spk-blue' : 'text-white'}>
-              <h1 className="text-xl font-black leading-none tracking-tight">ICT SPK</h1>
-              <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Inventory System</p>
-            </div>
-          </div>
+      <nav className="px-6 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Tablet className="w-7 h-7" />
+          <span className="text-lg font-bold tracking-tight">iPad Check</span>
+        </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onAdminLogin}
-              className="flex items-center gap-2 bg-spk-blue text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-xl shadow-spk-blue/20 hover:bg-blue-900 active:scale-95 transition-all cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              เข้าสู่ระบบเจ้าหน้าที่
-            </button>
-          </div>
+        <div className="flex items-center gap-3">
+          <span
+            title={`สถานะระบบ: ${statusConfig.label}`}
+            className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full text-xs font-medium"
+          >
+            <span className="relative flex w-2.5 h-2.5">
+              {health !== 'ok' && (
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${statusConfig.color} opacity-75`}></span>
+              )}
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${statusConfig.color}`}></span>
+            </span>
+            {statusConfig.label}
+          </span>
+          <button
+            onClick={onAdminLogin}
+            className="flex items-center gap-2 bg-white text-spk-blue px-5 py-2 rounded-xl font-bold text-sm hover:bg-spk-yellow transition-colors cursor-pointer"
+          >
+            <LogIn className="w-4 h-4" />
+            เข้าระบบ
+          </button>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section id="home" className="relative min-h-screen flex items-center justify-center overflow-hidden bg-spk-blue">
-        <div className="absolute inset-0 z-0">
-          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-spk-yellow/10 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-white/5 rounded-full blur-[120px]"></div>
-        </div>
+      {/* Hero */}
+      <main className="flex-1 flex items-center justify-center px-6 py-12 relative overflow-hidden">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-spk-yellow/10 rounded-full blur-[120px]"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-white/5 rounded-full blur-[120px]"></div>
 
-        <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7 }}
+          className="relative z-10 text-center max-w-4xl"
+        >
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold mb-4 leading-tight flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <img
+              src="https://www.spk.ac.th/home/wp-content/uploads/2025/10/spk-logo-png-new-1.png"
+              alt="SPK Logo"
+              referrerPolicy="no-referrer"
+              className="w-16 h-16 md:w-20 md:h-20 inline-block"
+            />
+            <span className="text-white">ระบบยืมอุปกรณ์</span>
+          </h1>
+          <h2 className="text-3xl md:text-5xl lg:text-6xl font-extrabold mb-8 text-spk-yellow leading-tight">
+            Apple iPad เพื่อการศึกษา
+          </h2>
+          <p className="text-base md:text-lg text-white/60 mb-10 max-w-2xl mx-auto">
+            ศูนย์ ICT โรงเรียนสารคามพิทยาคม มุ่งเน้นการใช้เทคโนโลยีเพื่อการเรียนรู้ที่ทันสมัย
+          </p>
+
+          <button
+            onClick={onStart}
+            className="bg-spk-yellow text-spk-blue px-10 py-4 rounded-xl font-bold text-base shadow-xl shadow-spk-yellow/20 hover:scale-105 active:scale-95 transition-transform cursor-pointer"
           >
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full text-white text-xs font-bold uppercase tracking-widest mb-8 border border-white/20">
-              <span className="w-2 h-2 rounded-full bg-spk-yellow animate-pulse"></span>
-              ICT Center SPK
-            </div>
-            <h1 className="text-5xl lg:text-7xl font-black text-white leading-tight mb-6 tracking-tighter">
-              ICT <span className="text-spk-yellow">INVENTORY</span> SYSTEM
-            </h1>
-            <p className="text-lg text-white/70 font-medium mb-12 max-w-2xl mx-auto leading-relaxed">
-              ระบบบริหารจัดการครุภัณฑ์และอุปกรณ์เทคโนโลยีสารสนเทศ โรงเรียนสารคามพิทยาคม
-            </p>
-            
-            {/* Topic Navigation Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-              {[
-                { id: 'report', label: 'แจ้งซ่อม/ปัญหา', icon: Wrench },
-                { id: 'products', label: 'ข้อมูลครุภัณฑ์', icon: Info },
-                { id: 'rules', label: 'ระเบียบการยืม', icon: BookOpen },
-                { id: 'contact', label: 'ติดต่อเรา', icon: Phone },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={scrollToFooter}
-                  className="bg-white/5 backdrop-blur-md border border-white/10 p-6 rounded-3xl hover:bg-white/10 transition-all group text-center cursor-pointer"
-                >
-                  <div className="w-12 h-12 bg-spk-yellow rounded-2xl flex items-center justify-center text-spk-blue mx-auto mb-4 group-hover:scale-110 transition-transform">
-                    <item.icon className="w-6 h-6" />
-                  </div>
-                  <span className="text-white font-bold text-sm">{item.label}</span>
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </section>
+            เริ่มต้นใช้งาน
+          </button>
+        </motion.div>
+      </main>
 
       {/* Footer */}
-      <footer className="bg-spk-blue py-20 text-white border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-12 mb-20">
-            <div className="lg:col-span-2">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="w-12 h-12 bg-spk-yellow rounded-2xl flex items-center justify-center shadow-lg">
-                  <img src="https://www.spk.ac.th/home/wp-content/uploads/2025/10/spk-logo-png-new-1.png" alt="SPK Logo" className="w-8 h-8" referrerPolicy="no-referrer" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-black leading-none">ICT CENTER SPK</h2>
-                  <p className="text-xs font-bold text-white/40 uppercase tracking-widest mt-1">Sarakhampittayakhom School</p>
-                </div>
-              </div>
-              <p className="text-white/60 font-medium max-w-md leading-relaxed">
-                มุ่งเน้นการให้บริการด้านเทคโนโลยีสารสนเทศที่มีคุณภาพ เพื่อส่งเสริมการเรียนรู้ในยุคดิจิทัลอย่างยั่งยืน
-              </p>
-              <div className="mt-8 space-y-2 text-white/60 text-sm font-medium">
-                <p className="flex items-center gap-2"><Phone className="w-4 h-4 text-spk-yellow" /> 043-711585 ต่อ 105</p>
-                <p className="flex items-center gap-2"><Mail className="w-4 h-4 text-spk-yellow" /> ict@spk.ac.th</p>
-                <p className="flex items-center gap-2"><Globe className="w-4 h-4 text-spk-yellow" /> www.spk.ac.th</p>
-              </div>
-            </div>
-            
+      <footer className="border-t border-white/10 px-6 py-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-start md:items-center">
+          <div className="flex items-start gap-3">
+            <img
+              src="https://www.spk.ac.th/home/wp-content/uploads/2025/10/spk-logo-png-new-1.png"
+              alt="SPK Logo"
+              referrerPolicy="no-referrer"
+              className="w-10 h-10"
+            />
             <div>
-              <h4 className="text-lg font-black mb-8 text-spk-yellow">เมนูหลัก</h4>
-              <ul className="space-y-4 text-white/60 font-bold">
-                <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-white transition-colors">หน้าแรก</button></li>
-                <li><button onClick={onStart} className="hover:text-white transition-colors">เข้าสู่ระบบยืม-คืน</button></li>
-              </ul>
+              <p className="font-bold text-sm">iPad Check System</p>
+              <p className="text-xs text-white/50">โรงเรียนสารคามพิทยาคม</p>
+              <div className="flex items-center gap-3 mt-3 text-white/40">
+                <a href="#" className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+                  <MessageCircle className="w-4 h-4" />
+                </a>
+                <a href="#" className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+                  <MessageSquare className="w-4 h-4" />
+                </a>
+                <a href="tel:043711585" className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+                  <Phone className="w-4 h-4" />
+                </a>
+              </div>
             </div>
           </div>
 
-          <div className="pt-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-6 text-white/40 text-xs font-bold uppercase tracking-widest">
-            <p>© {new Date().getFullYear()} ICT CENTER SPK. ALL RIGHTS RESERVED.</p>
+          <div className="flex flex-col gap-3 md:items-center text-sm text-white/70">
+            <a href="#" className="hover:text-white transition-colors">ระเบียบการยืม</a>
+            <a href="#" className="hover:text-white transition-colors">ติดต่อสอบถาม</a>
+          </div>
+
+          <div className="md:text-right text-xs text-white/40">
+            <p>© 2026 ศูนย์ ไอซีที โรงเรียนสารคามพิทยาคม</p>
+            <p className="mt-1 uppercase tracking-widest text-[10px]">Modern Education Technology</p>
           </div>
         </div>
       </footer>
-
-      {/* Back to Top Button */}
-      <AnimatePresence>
-        {isScrolled && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="fixed bottom-8 right-8 w-14 h-14 bg-spk-yellow text-spk-blue rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 cursor-pointer"
-          >
-            <ChevronDown className="w-8 h-8 rotate-180" />
-          </motion.button>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

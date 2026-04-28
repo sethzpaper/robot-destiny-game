@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [language] = useState<'th' | 'en'>('th');
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
@@ -199,11 +200,33 @@ const App: React.FC = () => {
     if (showLogin) {
       return <Login onLogin={handleLogin} onBack={() => setShowLogin(false)} t={t} />;
     }
-    return <LandingPage 
-      onStart={() => setShowLogin(true)} 
-      onAdminLogin={() => setShowLogin(true)} 
-      categories={categories}
-      devices={devices}
+    if (showCatalog) {
+      return (
+        <div className="min-h-screen bg-spk-gray">
+          <div className="bg-spk-blue text-white px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg">
+            <button
+              onClick={() => setShowCatalog(false)}
+              className="font-bold text-sm hover:text-spk-yellow transition-colors cursor-pointer"
+            >
+              ← กลับหน้าหลัก
+            </button>
+            <h1 className="text-lg font-bold">แคตตาล็อกอุปกรณ์</h1>
+            <button
+              onClick={() => setShowLogin(true)}
+              className="bg-spk-yellow text-spk-blue px-4 py-2 rounded-lg font-bold text-sm hover:scale-105 transition-transform cursor-pointer"
+            >
+              เข้าระบบ
+            </button>
+          </div>
+          <div className="p-6">
+            <Inventory devices={devices} categories={categories} t={t} />
+          </div>
+        </div>
+      );
+    }
+    return <LandingPage
+      onStart={() => setShowCatalog(true)}
+      onAdminLogin={() => setShowLogin(true)}
     />;
   }
 

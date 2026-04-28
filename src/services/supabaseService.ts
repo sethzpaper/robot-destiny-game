@@ -1,13 +1,14 @@
 // Frontend service: ยิง HTTP ไป Express backend (/api/*) เท่านั้น
-// ไม่มี Supabase URL / anon key อยู่ใน bundle อีกต่อไป
+// ใช้ Supabase Auth JWT ส่งใน Authorization header → RLS ทำงานต่อ user
 
 const CACHE_EXPIRY = 1000 * 60 * 60; // 1 hour
-const CACHEABLE_TABLES = ['categories', 'app_users', 'teachers'];
+const CACHEABLE_TABLES = ['categories', 'profiles', 'teachers'];
+const TOKEN_KEY = 'spk_token';
 
 const TABLE_MAP: Record<string, string> = {
   Devices: 'devices',
   Categories: 'categories',
-  Users: 'app_users',
+  Users: 'profiles',
   StudentsM4: 'students',
   StudentsM5: 'students',
   StudentsM6: 'students',
@@ -18,13 +19,24 @@ const TABLE_MAP: Record<string, string> = {
   Transactions: 'transactions',
 };
 
+function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
 async function api(path: string, body: any): Promise<any> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const tok = getToken();
+    if (tok) headers.Authorization = `Bearer ${tok}`;
     const r = await fetch(`/api/${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
+    if (r.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      return { success: false, message: 'Session expired, please login again' };
+    }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } catch (e: any) {
@@ -61,8 +73,20 @@ export const supabaseService = {
     return res;
   },
 
-  login(username: string, password: string) {
-    return api('login', { username, password });
+  async login(username: string, password: string) {
+    const res = await api('login', { username, password });
+    if (res.success && res.token) {
+      localStorage.setItem(TOKEN_KEY, res.token);
+      if (res.refresh_token) localStorage.setItem('spk_refresh', res.refresh_token);
+    }
+    return res;
+  },
+
+  async logout() {
+    await api('logout', {});
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('spk_refresh');
+    localStorage.removeItem('spk_user');
   },
 
   async create(tableName: string, data: any) {
