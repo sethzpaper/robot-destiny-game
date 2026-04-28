@@ -4,6 +4,7 @@ import { translations } from './constants';
 import { supabaseService } from './services/supabaseService';
 
 // Components
+import CardGame from './components/CardGame/CardGame';
 import LandingPage from './components/LandingPage';
 import Login from './components/Login';
 import Layout from './components/Layout';
@@ -20,6 +21,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [showCardGame, setShowCardGame] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [language] = useState<'th' | 'en'>('th');
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
@@ -197,6 +199,9 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
+    if (showCardGame) {
+      return <CardGame onBack={() => setShowCardGame(false)} />;
+    }
     if (showLogin) {
       return <Login onLogin={handleLogin} onBack={() => setShowLogin(false)} t={t} />;
     }
@@ -227,6 +232,7 @@ const App: React.FC = () => {
     return <LandingPage
       onStart={() => setShowCatalog(true)}
       onAdminLogin={() => setShowLogin(true)}
+      onCardGame={() => setShowCardGame(true)}
     />;
   }
 

@@ -5,11 +5,12 @@ import { motion } from 'framer-motion';
 interface LandingPageProps {
   onStart: () => void;        // → catalog (no login)
   onAdminLogin: () => void;   // → login screen
+  onCardGame?: () => void;    // → card game
 }
 
 type HealthStatus = 'ok' | 'degraded' | 'down' | 'checking';
 
-const LandingPage: React.FC<LandingPageProps> = ({ onStart, onAdminLogin }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ onStart, onAdminLogin, onCardGame }) => {
   const [health, setHealth] = useState<HealthStatus>('checking');
 
   useEffect(() => {
@@ -98,12 +99,22 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart, onAdminLogin }) => {
             ศูนย์ ICT โรงเรียนสารคามพิทยาคม มุ่งเน้นการใช้เทคโนโลยีเพื่อการเรียนรู้ที่ทันสมัย
           </p>
 
-          <button
-            onClick={onStart}
-            className="bg-spk-yellow text-spk-blue px-10 py-4 rounded-xl font-bold text-base shadow-xl shadow-spk-yellow/20 hover:scale-105 active:scale-95 transition-transform cursor-pointer"
-          >
-            เริ่มต้นใช้งาน
-          </button>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <button
+              onClick={onStart}
+              className="bg-spk-yellow text-spk-blue px-10 py-4 rounded-xl font-bold text-base shadow-xl shadow-spk-yellow/20 hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+            >
+              เริ่มต้นใช้งาน
+            </button>
+            {onCardGame && (
+              <button
+                onClick={onCardGame}
+                className="bg-purple-600 text-white px-10 py-4 rounded-xl font-bold text-base shadow-xl shadow-purple-500/20 hover:scale-105 active:scale-95 transition-transform cursor-pointer border border-purple-400"
+              >
+                🤖 Steel Robot Destiny
+              </button>
+            )}
+          </div>
         </motion.div>
       </main>
 
