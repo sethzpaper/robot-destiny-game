@@ -1,288 +1,81 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { User, Device, Category, UserRole, DeviceStatus, TranslationKey, ServiceLog, Student, ServiceReport, Teacher, ActivityLog } from './types';
-import { translations } from './constants';
-import { supabaseService } from './services/supabaseService';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import type { AppView, GameSettings, PlayerColor } from './types';
+import { DEFAULT_SETTINGS } from './types';
+import BackgroundDecor from './components/BackgroundDecor';
+import HeaderHUD from './components/HeaderHUD';
+import LandingView from './components/views/LandingView';
+import ColorSelectionView from './components/views/ColorSelectionView';
+import HowToPlayView from './components/views/HowToPlayView';
+import ShowCardsView from './components/views/ShowCardsView';
+import DeckBuilderView from './components/views/DeckBuilderView';
+import SettingsView from './components/views/SettingsView';
+import ArenaView from './components/ArenaView';
+import { loadPlayerDeckIds } from './game/deckStorage';
 
-// Components
-import CardGame from './components/CardGame/CardGame';
-import LandingPage from './components/LandingPage';
-import Login from './components/Login';
-import Layout from './components/Layout';
-import Dashboard from './components/Dashboard';
-import Inventory from './components/Inventory';
-import BorrowReturn from './components/BorrowReturn';
-import AdminPanel from './components/Admin';
-import Service from './components/Service';
-import Logs from './components/Logs';
-import StudentsRegistry from './components/StudentsRegistry';
+export default function App() {
+  const [view, setView] = useState<AppView>('landing');
+  const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
+  // remount key for ArenaView so a fresh game starts each entry
+  const [arenaKey, setArenaKey] = useState(0);
 
-const App: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [showLogin, setShowLogin] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(false);
-  const [showCardGame, setShowCardGame] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [language] = useState<'th' | 'en'>('th');
-  const [dbConnected, setDbConnected] = useState<boolean | null>(null);
-  
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [serviceLogs, setServiceLogs] = useState<ServiceLog[]>([]);
-  const [serviceReports, setServiceReports] = useState<ServiceReport[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    available: 0,
-    borrowed: 0,
-    maintenance: 0
-  });
+  const goLanding = () => setView('landing');
 
-  const t = useCallback((key: TranslationKey): string => {
-    return (translations[language] as any)[key] || key;
-  }, [language]);
-
-  const loadPublicData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [devicesRes, categoriesRes] = await Promise.all([
-        supabaseService.read('Devices'),
-        supabaseService.read('Categories')
-      ]);
-
-      if (devicesRes.success && categoriesRes.success) {
-        const loadedCategories = categoriesRes.items as Category[];
-        const loadedDevices = (devicesRes.items as Device[]).map(d => {
-          const cat = loadedCategories.find(c => c.category === d.category_id);
-          return {
-            ...d,
-            name: cat?.name || 'Unknown Device',
-            categoryName: cat?.name,
-            imageUrl: cat?.imageUrl,
-            designatedFor: cat?.designatedFor
-          };
-        });
-        setCategories(loadedCategories);
-        setDevices(loadedDevices);
-        
-        // Calculate stats
-        setStats({
-          total: devicesRes.total || loadedDevices.length,
-          available: loadedDevices.filter(d => d.status === DeviceStatus.Available).length,
-          borrowed: loadedDevices.filter(d => d.status === DeviceStatus.Borrowed).length,
-          maintenance: loadedDevices.filter(d => d.status === DeviceStatus.Maintenance).length
-        });
-      }
-    } catch (error) {
-      console.error('Failed to load public data', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const loadExtendedData = useCallback(async () => {
-    if (!currentUser) return;
-    
-    try {
-      const [usersRes, serviceLogsRes, serviceRes, logsRes] = await Promise.all([
-        supabaseService.read('Users'),
-        supabaseService.read('serviceLogs'),
-        supabaseService.read('Service'),
-        supabaseService.read('Logs')
-      ]);
-
-      if (usersRes.success) setUsers(usersRes.items as User[]);
-      if (serviceLogsRes.success) setServiceLogs(serviceLogsRes.items as ServiceLog[]);
-      if (serviceRes.success) setServiceReports(serviceRes.items as ServiceReport[]);
-      if (logsRes.success) setActivityLogs(logsRes.items as ActivityLog[]);
-    } catch (error) {
-      console.error('Failed to load extended data', error);
-    }
-  }, [currentUser]);
-
-  const normalizeGrade = (grade: any): string => {
-    const g = String(grade).trim();
-    if (!g) return '';
-    if (g.startsWith('ม.')) return g;
-    if (/^\d+$/.test(g)) return `ม.${g}`;
-    return g;
-  };
-
-  const loadStudentsData = useCallback(async () => {
-    if (!currentUser || students.length > 0) return;
-    
-    setIsLoading(true);
-    try {
-      const [studentsM4Res, studentsM5Res, studentsM6Res, teachersRes] = await Promise.all([
-        supabaseService.read('StudentsM4'),
-        supabaseService.read('StudentsM5'),
-        supabaseService.read('StudentsM6'),
-        supabaseService.read('Teachers')
-      ]);
-
-      const allStudents = [
-        ...(studentsM4Res.success ? studentsM4Res.items as any[] : []),
-        ...(studentsM5Res.success ? studentsM5Res.items as any[] : []),
-        ...(studentsM6Res.success ? studentsM6Res.items as any[] : [])
-      ].map(s => {
-        // Robust mapping for student name
-        const fullName = s.fullName || s['ชื่อ-นามสกุล'] || s['ชื่อ'] || s['name'] || 'ยังไม่ระบุ';
-        const studentId = s.studentId || s['รหัสนักเรียน'] || s['รหัสประจำตัว'] || s['id'] || 'ยังไม่ระบุ';
-        const grade = normalizeGrade(s.grade || s['ชั้น'] || s['ระดับชั้น']);
-        const classroom = s.classroom || s['ห้อง'] || 'ยังไม่ระบุ';
-        const email = s.email || s['อีเมล'] || 'ยังไม่ระบุ';
-
-        return {
-          ...s,
-          studentId: String(studentId),
-          fullName,
-          grade,
-          classroom: String(classroom),
-          email
-        };
-      });
-
-      setStudents(allStudents as any);
-      if (teachersRes.success) setTeachers(teachersRes.items as Teacher[]);
-    } catch (error) {
-      console.error('Failed to load students data', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentUser, students.length]);
-
-  useEffect(() => {
-    const checkDb = async () => {
-      try {
-        const res = await supabaseService.read('Categories');
-        setDbConnected(res.success);
-      } catch {
-        setDbConnected(false);
-      }
-    };
-    checkDb();
-    loadPublicData();
-  }, [loadPublicData]);
-
-  useEffect(() => {
-    if (currentUser) {
-      loadExtendedData();
-    }
-  }, [currentUser, loadExtendedData]);
-
-  useEffect(() => {
-    if (currentUser && activeTab === 'students') {
-      loadStudentsData();
-    }
-  }, [currentUser, activeTab, loadStudentsData]);
-
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setShowLogin(false);
-    setActiveTab('dashboard');
-  };
-
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
-        <div className="w-16 h-16 border-4 border-spk-blue border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-spk-blue font-semibold">ICT Inventory System Loading...</p>
-      </div>
-    );
-  }
-
-  if (!currentUser) {
-    if (showCardGame) {
-      return <CardGame onBack={() => setShowCardGame(false)} />;
-    }
-    if (showLogin) {
-      return <Login onLogin={handleLogin} onBack={() => setShowLogin(false)} t={t} />;
-    }
-    if (showCatalog) {
-      return (
-        <div className="min-h-screen bg-spk-gray">
-          <div className="bg-spk-blue text-white px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-lg">
-            <button
-              onClick={() => setShowCatalog(false)}
-              className="font-bold text-sm hover:text-spk-yellow transition-colors cursor-pointer"
-            >
-              ← กลับหน้าหลัก
-            </button>
-            <h1 className="text-lg font-bold">แคตตาล็อกอุปกรณ์</h1>
-            <button
-              onClick={() => setShowLogin(true)}
-              className="bg-spk-yellow text-spk-blue px-4 py-2 rounded-lg font-bold text-sm hover:scale-105 transition-transform cursor-pointer"
-            >
-              เข้าระบบ
-            </button>
-          </div>
-          <div className="p-6">
-            <Inventory devices={devices} categories={categories} t={t} />
-          </div>
-        </div>
-      );
-    }
-    return <LandingPage
-      onStart={() => setShowCatalog(true)}
-      onAdminLogin={() => setShowLogin(true)}
-      onCardGame={() => setShowCardGame(true)}
-    />;
-  }
-
-  const renderContent = () => {
-    const extendedDevices = [...devices] as any;
-    extendedDevices.users = users;
-    extendedDevices.serviceLogs = serviceLogs;
-    extendedDevices.students = students;
-    extendedDevices.serviceReports = serviceReports;
-    extendedDevices.teachers = teachers;
-
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard stats={stats} onRefresh={loadPublicData} t={t} />;
-      case 'inventory':
-        return <Inventory devices={devices} categories={categories} t={t} />;
-      case 'borrow':
-        return <BorrowReturn devices={extendedDevices} students={students} categories={categories} currentUser={currentUser} onRefresh={loadPublicData} t={t} />;
-      case 'service':
-        return <Service devices={extendedDevices} categories={categories} t={t} />;
-      case 'students':
-        return <StudentsRegistry students={students} teachers={teachers} t={t} />;
-      case 'logs':
-        return <Logs logs={activityLogs} t={t} />;
-      case 'admin':
-        return (currentUser.role === UserRole.Admin || currentUser.role === UserRole.Staff) ? (
-          <AdminPanel 
-            categories={categories} 
-            onRefresh={loadPublicData} 
-            t={t} 
-          />
-        ) : (
-          <Dashboard stats={stats} onRefresh={loadPublicData} t={t} />
-        );
-      default:
-        return <Dashboard stats={stats} onRefresh={loadPublicData} t={t} />;
-    }
+  const enterArena = (color: PlayerColor) => {
+    setSettings((s) => ({ ...s, playerColor: color }));
+    setArenaKey((k) => k + 1);
+    setView('arena');
   };
 
   return (
-    <Layout 
-      currentUser={currentUser} 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab} 
-      onLogout={handleLogout}
-      t={t}
-    >
-      {renderContent()}
-    </Layout>
-  );
-};
+    <div className="min-h-screen bg-[#0a0a0c] text-[#e0e0e0] flex flex-col font-sans overflow-hidden selection:bg-cyan-500 selection:text-black">
+      <BackgroundDecor />
 
-export default App;
+      <HeaderHUD
+        view={view}
+        onLogoClick={goLanding}
+        color={settings.playerColor}
+      />
+
+      <main className="flex-1 z-10 flex flex-col overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          {view === 'landing' && (
+            <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="flex-1 flex flex-col">
+              <LandingView onNavigate={setView} onExit={() => window.close()} />
+            </motion.div>
+          )}
+          {view === 'colorSelection' && (
+            <motion.div key="color" initial={{ opacity: 0, x: 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -100 }} className="flex-1 flex flex-col">
+              <ColorSelectionView onChoose={enterArena} onBack={goLanding} />
+            </motion.div>
+          )}
+          {view === 'howToPlay' && (
+            <motion.div key="how" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+              <HowToPlayView onBack={goLanding} />
+            </motion.div>
+          )}
+          {view === 'showCards' && (
+            <motion.div key="show" initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+              <ShowCardsView onBack={goLanding} />
+            </motion.div>
+          )}
+          {view === 'deckBuilder' && (
+            <motion.div key="deck" initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+              <DeckBuilderView onBack={goLanding} />
+            </motion.div>
+          )}
+          {view === 'settings' && (
+            <motion.div key="settings" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+              <SettingsView settings={settings} onChange={setSettings} onBack={goLanding} />
+            </motion.div>
+          )}
+          {view === 'arena' && (
+            <motion.div key={`arena-${arenaKey}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+              <ArenaView color={settings.playerColor} aiLevel={settings.aiLevel} playerDeckIds={loadPlayerDeckIds()} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+}

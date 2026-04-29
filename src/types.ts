@@ -1,111 +1,33 @@
-import { translations } from './constants';
+export type AppView =
+  | 'landing'
+  | 'colorSelection'
+  | 'howToPlay'
+  | 'showCards'
+  | 'deckBuilder'
+  | 'settings'
+  | 'arena';
 
-export type TranslationKey = keyof typeof translations.th;
+export type PlayerColor = 'blue' | 'red';
+export type AiLevel = 'easy' | 'normal' | 'hard';
 
-export enum UserRole {
-  Admin = 'Admin',
-  Staff = 'Staff'
+export interface GameSettings {
+  musicEnabled: boolean;
+  sfxEnabled: boolean;
+  playerColor: PlayerColor;
+  aiLevel: AiLevel;
+  keyBindings: Record<string, string>;
 }
 
-export enum DeviceStatus {
-  Available = 'Available',
-  Borrowed = 'Borrowed',
-  Maintenance = 'Maintenance',
-  PendingApproval = 'PendingApproval',
-  Lost = 'Lost'
-}
-
-export enum DeviceCategory {
-  iPad = 'iPad',
-  Laptop = 'Laptop',
-  Projector = 'Projector',
-  Camera = 'Camera',
-  Others = 'Others'
-}
-
-export interface User {
-  users: string;
-  password?: string;
-  name: string;
-  role: UserRole;
-}
-
-export interface Category {
-  category: string; // This is the ID (e.g., laptop, tablet)
-  name: string;
-  description: string;
-  designatedFor: 'student' | 'teacher' | 'all';
-  imageUrl: string;
-}
-
-export interface Device {
-  serial_number: string;
-  category_id: string;
-  default_accessories: string;
-  is_featured: boolean;
-  status: DeviceStatus;
-  created_at?: string;
-  // Hydrated fields for UI
-  name?: string;
-  categoryName?: string;
-  designatedFor?: string;
-  imageUrl?: string;
-}
-
-export interface Student {
-  studentId: string;
-  fullName: string;
-  grade: string;
-  classroom: string;
-  email: string;
-  teacherId?: string;
-  note?: string;
-}
-
-export interface Teacher {
-  id: number;
-  fullName: string;
-  phone: string;
-  department: string;
-  grade: number;
-  classroom: number;
-}
-
-export interface ServiceLog {
-  id: string;
-  product_id: string;
-  issue: string;
-  report_date: string;
-  status: string;
-}
-
-export interface ServiceReport {
-  id: string;
-  deviceId: string;
-  issue_type: string;
-  details: string;
-  email: string;
-  studentName?: string;
-  classroom?: string;
-  photo_url: string;
-  reportedAt: string;
-  status: 'Pending' | 'In Progress' | 'Resolved';
-}
-
-export interface ActivityLog {
-  id: string;
-  timestamp: string;
-  user_id: string;
-  action: string;
-  details: string;
-}
-
-export interface Transaction {
-  id: string;
-  student_id: string;
-  serial_number: string;
-  borrow_date: string;
-  return_date: string;
-  recorder: string;
-  status: string;
-}
+export const DEFAULT_SETTINGS: GameSettings = {
+  musicEnabled: true,
+  sfxEnabled: true,
+  playerColor: 'blue',
+  aiLevel: 'normal',
+  keyBindings: {
+    '1': 'การ์ด 1',
+    '2': 'การ์ด 2',
+    '3': 'การ์ด 3',
+    Space: 'ข้ามเฟส',
+    Esc: 'ยกเลิกการเลือก',
+  },
+};

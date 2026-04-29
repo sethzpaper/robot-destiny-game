@@ -1,120 +1,164 @@
-import React from 'react';
-import { CardInstance, CardData } from '../../game/gameTypes';
-import { getAtk } from '../../game/gameEngine';
+import { motion } from 'motion/react';
+import { Command, Cpu, Shield, Sparkles } from 'lucide-react';
+import type { CardInstance } from '../../game/gameTypes';
 
-const FACTION_STYLE: Record<string, string> = {
-  steel:   'from-slate-700 via-slate-800 to-slate-900 border-slate-400',
-  circuit: 'from-emerald-700 via-emerald-800 to-emerald-950 border-emerald-400',
-  plasma:  'from-orange-600 via-orange-800 to-orange-950 border-orange-400',
-  void:    'from-purple-700 via-purple-900 to-gray-950 border-purple-400',
-};
-
-const TYPE_BADGE: Record<string, string> = {
-  unit:    'bg-blue-500 text-white',
-  program: 'bg-red-500 text-white',
-  upgrade: 'bg-yellow-500 text-black',
-  core:    'bg-green-500 text-white',
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  unit: 'UNIT', program: 'PROGRAM', upgrade: 'UPGRADE', core: 'CORE',
-};
-
-interface Props {
-  card: CardInstance | CardData;
-  isSelected?: boolean;
-  isAttacker?: boolean;
-  isTapped?: boolean;
-  isDead?: boolean;
-  size?: 'sm' | 'md' | 'lg';
-  onClick?: () => void;
+export interface CardViewProps {
+  card: CardInstance;
+  selected?: boolean;
+  playable?: boolean;
   faceDown?: boolean;
+  scale?: number;
+  onClick?: () => void;
 }
 
-function getData(card: CardInstance | CardData): CardData {
-  return 'data' in card ? card.data : card as CardData;
+const FACTION_GLOW: Record<string, string> = {
+  steel: 'from-slate-500 to-zinc-950',
+  circuit: 'from-cyan-500 to-blue-950',
+  plasma: 'from-fuchsia-500 to-purple-950',
+  void: 'from-zinc-600 to-black',
+};
+
+const FACTION_ACCENT: Record<string, string> = {
+  steel: 'text-slate-200',
+  circuit: 'text-cyan-200',
+  plasma: 'text-fuchsia-200',
+  void: 'text-zinc-200',
+};
+
+function signed(value: number) {
+  return value > 0 ? `+${value}` : `${value}`;
 }
 
-export default function CardView({ card, isSelected, isAttacker, isTapped, isDead, size = 'md', onClick, faceDown }: Props) {
-  const data = getData(card);
-  const inst = 'iid' in card ? (card as CardInstance) : null;
-  const faction = FACTION_STYLE[data.faction] ?? FACTION_STYLE.steel;
-
-  const dims = size === 'sm'
-    ? 'w-16 h-24 text-[8px]'
-    : size === 'lg'
-    ? 'w-28 h-40 text-[10px]'
-    : 'w-20 h-28 text-[9px]';
-
+export default function CardView({
+  card,
+  selected = false,
+  playable = true,
+  faceDown = false,
+  scale = 1,
+  onClick,
+}: CardViewProps) {
   if (faceDown) {
     return (
-      <div className={`${dims} rounded-lg border-2 border-indigo-400 bg-gradient-to-b from-indigo-900 to-indigo-950 flex items-center justify-center cursor-default select-none`}>
-        <div className="text-2xl opacity-60">✦</div>
+      <div
+        style={{ scale }}
+        className="relative h-[340px] w-[220px] overflow-hidden rounded-[18px] border-2 border-red-500/20 bg-[#0d0d10] shadow-2xl"
+      >
+        <div className="absolute inset-4 rounded-xl border border-red-400/10" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_35%,rgba(239,68,68,0.12),transparent_65%)]" />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-18deg] text-xs font-black uppercase tracking-[0.45em] text-red-400/30">
+          Enemy
+        </div>
       </div>
     );
   }
 
-  const ringClass = isSelected
-    ? 'ring-4 ring-yellow-400 ring-offset-1'
-    : isAttacker
-    ? 'ring-4 ring-red-500 ring-offset-1'
-    : '';
-
-  const rotateClass = isTapped ? 'rotate-12 opacity-70' : '';
-  const deadClass = isDead ? 'opacity-40 grayscale' : '';
+  const data = card.data;
+  const accent = FACTION_ACCENT[data.faction] ?? 'text-white';
+  const glow = FACTION_GLOW[data.faction] ?? 'from-gray-600 to-gray-950';
+  const atk = (data.atk ?? 0) + card.atkMod;
+  const def = (data.def ?? 0) + card.defMod;
+  const hasAtkMod = card.atkMod !== 0;
+  const hasDefMod = card.defMod !== 0;
+  const isUnit = data.type === 'unit';
+  const TypeIcon =
+    data.type === 'unit' ? Cpu : data.type === 'program' ? Command : data.type === 'upgrade' ? Shield : Sparkles;
 
   return (
-    <div
-      onClick={onClick}
-      className={`
-        ${dims} ${rotateClass} ${deadClass} ${ringClass}
-        bg-gradient-to-b ${faction}
-        border-2 rounded-lg flex flex-col overflow-hidden
-        transition-all duration-200 select-none
-        ${onClick ? 'cursor-pointer hover:scale-105 hover:shadow-lg hover:shadow-yellow-400/20' : 'cursor-default'}
-      `}
+    <motion.button
+      type="button"
+      onClick={playable ? onClick : undefined}
+      whileHover={playable ? { scale: 1.05 * scale, rotateY: 5 } : undefined}
+      animate={{ rotate: card.isTapped ? 90 : 0 }}
+      style={{ scale }}
+      className={`group relative h-[340px] w-[220px] overflow-hidden rounded-[18px] border-2 bg-[#17171b] text-left shadow-2xl transition-colors
+        ${selected ? 'border-cyan-300 shadow-[0_0_32px_rgba(34,211,238,0.45)]' : 'border-white/10 hover:border-cyan-400/50'}
+        ${playable ? 'cursor-pointer' : 'cursor-not-allowed opacity-65'}`}
+      aria-pressed={selected}
     >
-      {/* Top row: cost + type badge */}
-      <div className="flex items-center justify-between px-1 pt-0.5">
-        <span className="font-black text-yellow-300">⚡{data.cost}</span>
-        <span className={`${TYPE_BADGE[data.type]} px-0.5 rounded-sm font-bold leading-tight`} style={{ fontSize: '7px' }}>
-          {TYPE_LABEL[data.type]}
-        </span>
+      <div className={`relative flex h-[178px] flex-col items-center justify-center overflow-hidden bg-gradient-to-b ${glow}`}>
+        <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.45),transparent_36%)]" />
+        <TypeIcon className={`absolute right-3 top-3 h-5 w-5 ${accent} opacity-80`} />
+        <div className="relative z-10 px-4 text-center">
+          <div className="mb-1 font-mono text-[7px] uppercase tracking-[0.45em] text-white/45">
+            Arcana {data.tarotRoman}
+          </div>
+          <div className={`text-sm font-black uppercase italic tracking-widest ${accent}`}>{data.tarotName}</div>
+          <div className="mt-3 text-5xl leading-none">{data.emojiArt}</div>
+        </div>
+        <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
+          <span className="font-mono text-[9px] uppercase text-white/45">{data.faction}</span>
+          <div className="flex gap-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <span
+                key={i}
+                className={`h-1.5 w-1.5 rounded-full ${i < data.cost ? 'bg-cyan-300 shadow-[0_0_6px_currentColor]' : 'bg-white/15'}`}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Art area */}
-      <div className="flex-1 flex flex-col items-center justify-center py-0.5">
-        <div className="text-white/30 font-serif" style={{ fontSize: size === 'lg' ? '10px' : '8px' }}>{data.tarotRoman}</div>
-        <div style={{ fontSize: size === 'lg' ? '28px' : '20px' }}>{data.emojiArt}</div>
-        <div className="text-white/20 font-serif" style={{ fontSize: '7px' }}>{data.tarotName}</div>
+      <div className="flex h-[162px] flex-col justify-between bg-[#111115] p-4">
+        <div>
+          <div className="flex items-center justify-between">
+            <span className={`rounded border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest ${accent}`}>
+              {data.type}
+            </span>
+            <span className="font-mono text-[9px] uppercase text-white/35">Cost {data.cost}</span>
+          </div>
+          <h3 className="mt-2 line-clamp-1 text-base font-black uppercase italic leading-tight tracking-normal text-white">
+            {data.name}
+          </h3>
+          <p className="mt-1 line-clamp-2 font-mono text-[9px] uppercase leading-relaxed text-gray-400">{data.thaiName}</p>
+          {data.effect && (
+            <p className="mt-2 line-clamp-2 border-t border-white/10 pt-2 font-mono text-[9px] leading-relaxed text-cyan-300/85">
+              {data.effect.description}
+            </p>
+          )}
+        </div>
+
+        {isUnit && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded border border-white/10 bg-white/5 p-2 text-center">
+              <div className="text-[7px] font-bold uppercase text-gray-500">ATK</div>
+              <div className="text-sm font-black text-cyan-300">
+                {atk}
+                {hasAtkMod && <span className="ml-1 text-[9px] text-yellow-300">({signed(card.atkMod)})</span>}
+              </div>
+            </div>
+            <div className="rounded border border-white/10 bg-white/5 p-2 text-center">
+              <div className="text-[7px] font-bold uppercase text-gray-500">HP / DEF</div>
+              <div className="text-sm font-black text-cyan-300">
+                {card.currentHp}/{def}
+                {hasDefMod && <span className="ml-1 text-[9px] text-yellow-300">({signed(card.defMod)})</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Name */}
-      <div className="px-1 text-center leading-tight">
-        <div className="text-white font-bold truncate" style={{ fontSize: size === 'lg' ? '10px' : '8px' }}>{data.name}</div>
-        <div className="text-white/60 truncate" style={{ fontSize: '7px' }}>{data.thaiName}</div>
-      </div>
-
-      {/* Stats bar */}
-      {data.type === 'unit' && inst && (
-        <div className="flex justify-between px-1 pb-0.5 mt-0.5 border-t border-white/20">
-          <span className="text-red-300 font-bold">⚔{getAtk(inst)}</span>
-          <span className={inst.currentHp <= 1 ? 'text-red-400 font-bold animate-pulse' : 'text-blue-300 font-bold'}>
-            ❤{inst.currentHp}
+      {card.sick && (
+        <div className="absolute inset-0 grid place-items-center bg-zinc-950/55 backdrop-grayscale">
+          <span className="rounded-full border border-white/15 bg-black/75 px-3 py-1 font-mono text-[9px] font-black uppercase tracking-widest text-zinc-200">
+            Deploying
           </span>
         </div>
       )}
-      {data.type === 'unit' && !inst && (
-        <div className="flex justify-between px-1 pb-0.5 mt-0.5 border-t border-white/20">
-          <span className="text-red-300 font-bold">⚔{data.atk}</span>
-          <span className="text-blue-300 font-bold">🛡{data.def}</span>
+
+      {(card.taunt || card.silenced) && (
+        <div className="absolute left-3 top-3 flex gap-1">
+          {card.taunt && !card.silenced && (
+            <span className="rounded bg-yellow-300 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-widest text-black">
+              Taunt
+            </span>
+          )}
+          {card.silenced && (
+            <span className="rounded bg-zinc-200 px-2 py-1 font-mono text-[8px] font-black uppercase tracking-widest text-black">
+              Silence
+            </span>
+          )}
         </div>
       )}
-      {data.type !== 'unit' && data.effect && (
-        <div className="px-1 pb-0.5 mt-0.5 border-t border-white/20 text-white/70 leading-tight text-center" style={{ fontSize: '7px' }}>
-          {data.effect.description.length > 30 ? data.effect.description.slice(0, 27) + '…' : data.effect.description}
-        </div>
-      )}
-    </div>
+    </motion.button>
   );
 }

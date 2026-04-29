@@ -213,6 +213,8 @@ const CORES: CardData[] = [
 
 export const ALL_CARDS: CardData[] = [...UNITS, ...PROGRAMS, ...UPGRADES, ...CORES];
 
+export const CARD_BY_ID = new Map(ALL_CARDS.map((card) => [card.id, card]));
+
 // 40-card starter deck for both players
 export function buildStarterDeck(): CardData[] {
   const u = UNITS;
@@ -245,4 +247,14 @@ export function buildStarterDeck(): CardData[] {
     c[2], c[2],       // Plasma Cell ×2
     c[3], c[3],       // Void Shard ×2
   ];
+}
+
+export function buildDefaultConstructedDeck(): CardData[] {
+  return buildStarterDeck().slice(0, 30);
+}
+
+export function buildDeckFromIds(ids?: string[]): CardData[] {
+  if (!ids || ids.length === 0) return buildStarterDeck();
+  const deck = ids.map((id) => CARD_BY_ID.get(id)).filter((card): card is CardData => Boolean(card));
+  return deck.length > 0 ? deck : buildStarterDeck();
 }

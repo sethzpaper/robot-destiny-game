@@ -1,9 +1,9 @@
 import { useReducer, useCallback, useEffect, useRef } from 'react';
-import { GameState } from './gameTypes';
+import { GameOptions, GameState } from './gameTypes';
 import { initGame, startTurn, playCard, toggleAttacker, advancePhase, runAiTurn, needsTarget } from './gameEngine';
 
 type Action =
-  | { type: 'INIT' }
+  | { type: 'INIT'; options?: GameOptions }
   | { type: 'SET'; state: GameState }
   | { type: 'SELECT'; iid: string | null }
   | { type: 'PLAY_CARD'; iid: string; targetIid?: string }
@@ -11,7 +11,10 @@ type Action =
   | { type: 'ADVANCE' };
 
 function reducer(state: GameState, action: Action): GameState {
-  if (action.type === 'INIT') return { ...initGame(), ...startTurn(initGame()) };
+  if (action.type === 'INIT') {
+    const init = initGame(action.options);
+    return startTurn(init);
+  }
   if (action.type === 'SET') return action.state;
 
   if (state.busy || state.winner) return state;
@@ -28,8 +31,8 @@ function reducer(state: GameState, action: Action): GameState {
   }
 }
 
-export function useGameState() {
-  const init = initGame();
+export function useGameState(options: GameOptions = {}) {
+  const init = initGame(options);
   const firstTurn = startTurn(init);
   const [state, dispatch] = useReducer(reducer, firstTurn);
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,18 +42,18 @@ export function useGameState() {
     if (state.active !== 'ai' || state.winner || state.busy) return;
     if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     aiTimerRef.current = setTimeout(() => {
-      const nextState = runAiTurn(state);
+      const nextState = runAiTurn(state, options.aiLevel);
       dispatch({ type: 'SET', state: nextState });
     }, 1200);
     return () => {
       if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     };
-  }, [state.active, state.turn, state.winner]);
+  }, [state.active, state.turn, state.winner, options.aiLevel]);
 
   const selectCard = useCallback((iid: string | null) => dispatch({ type: 'SELECT', iid }), []);
   const advance = useCallback(() => dispatch({ type: 'ADVANCE' }), []);
   const toggleAtt = useCallback((iid: string) => dispatch({ type: 'TOGGLE_ATTACKER', iid }), []);
-  const restart = useCallback(() => dispatch({ type: 'INIT' }), []);
+  const restart = useCallback(() => dispatch({ type: 'INIT', options }), [options]);
 
   // Handle card play + targeting logic
   const handleCardClick = useCallback((iid: string) => {

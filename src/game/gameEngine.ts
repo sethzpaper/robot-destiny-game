@@ -1,9 +1,10 @@
-import { GameState, CardInstance, CardData, PlayerState, PlayerId, GamePhase } from './gameTypes';
-import { buildStarterDeck } from './cardDatabase';
+import type { AiLevel, CardData, CardInstance, EffectTrigger, GameOptions, GameState, PlayerId, PlayerState } from './gameTypes';
+import { buildDeckFromIds, buildStarterDeck } from './cardDatabase';
+import { getEffectTarget, runEffect } from './effects';
 
 let iidCounter = 0;
 
-function makeInstance(data: CardData): CardInstance {
+export function makeInstance(data: CardData): CardInstance {
   return {
     iid: `${data.id}_${++iidCounter}_${Math.random().toString(36).slice(2, 6)}`,
     data,
@@ -12,6 +13,8 @@ function makeInstance(data: CardData): CardInstance {
     sick: true,
     atkMod: 0,
     defMod: 0,
+    silenced: false,
+    taunt: false,
   };
 }
 
@@ -24,15 +27,15 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function makePlayer(id: PlayerId, name: string): PlayerState {
-  const deck = shuffle(buildStarterDeck()).map(makeInstance);
+function makePlayer(id: PlayerId, name: string, deckData: CardData[]): PlayerState {
+  const deck = shuffle(deckData).map(makeInstance);
   const hand = deck.splice(0, 5);
-  return { id, name, hp: 200, cores: 0, energy: 0, playedCore: false, hand, deck, graveyard: [] , field: [] };
+  return { id, name, hp: 200, cores: 0, energy: 0, playedCore: false, hand, deck, graveyard: [], field: [] };
 }
 
-export function initGame(): GameState {
-  const playerState = makePlayer('player', 'ผู้เล่น');
-  const aiState = makePlayer('ai', 'AI');
+export function initGame(options: GameOptions = {}): GameState {
+  const playerState = makePlayer('player', 'Player', buildDeckFromIds(options.playerDeckIds));
+  const aiState = makePlayer('ai', 'AI', options.aiDeckIds ? buildDeckFromIds(options.aiDeckIds) : buildStarterDeck());
   return {
     phase: 'draw',
     turn: 1,
@@ -41,9 +44,9 @@ export function initGame(): GameState {
     ai: aiState,
     selectedIid: null,
     attackerIids: [],
-    log: ['[ เกมเริ่มต้น! ] — เทิร์นที่ 1 ของผู้เล่น'],
+    log: ['[ Game start ] - Player turn 1'],
     winner: null,
-    message: 'เฟส Draw — กดปุ่มจั่วไพ่',
+    message: 'Draw phase - continue to draw',
     busy: false,
   };
 }
@@ -51,45 +54,72 @@ export function initGame(): GameState {
 export function getP(state: GameState, id: PlayerId): PlayerState {
   return id === 'player' ? state.player : state.ai;
 }
+
 export function getOpp(state: GameState, id: PlayerId): PlayerState {
   return id === 'player' ? state.ai : state.player;
 }
+
 function setP(state: GameState, p: PlayerState): GameState {
   return p.id === 'player' ? { ...state, player: p } : { ...state, ai: p };
 }
+
 function addLog(state: GameState, msg: string): GameState {
   return { ...state, log: [msg, ...state.log].slice(0, 60) };
 }
 
-export function getAtk(u: CardInstance): number { return (u.data.atk ?? 0) + u.atkMod; }
-export function getDef(u: CardInstance): number { return (u.data.def ?? 0) + u.defMod; }
+function other(id: PlayerId): PlayerId {
+  return id === 'player' ? 'ai' : 'player';
+}
+
+function ownerOf(state: GameState, iid: string): PlayerId | null {
+  if (state.player.field.some((card) => card.iid === iid) || state.player.hand.some((card) => card.iid === iid)) return 'player';
+  if (state.ai.field.some((card) => card.iid === iid) || state.ai.hand.some((card) => card.iid === iid)) return 'ai';
+  return null;
+}
+
+export function getAtk(u: CardInstance): number {
+  return (u.data.atk ?? 0) + u.atkMod;
+}
+
+export function getDef(u: CardInstance): number {
+  return (u.data.def ?? 0) + u.defMod;
+}
 
 export function drawCard(state: GameState, who?: PlayerId): GameState {
   const id = who ?? state.active;
   const p = getP(state, id);
   if (p.deck.length === 0) {
-    const oppId: PlayerId = id === 'player' ? 'ai' : 'player';
-    return { ...addLog(state, `${p.name} ไม่มีไพ่เหลือ! ${getP(state, oppId).name} ชนะ!`), winner: oppId, phase: 'gameover' };
+    const winner = other(id);
+    return { ...addLog(state, `${p.name} has no cards left. ${getP(state, winner).name} wins.`), winner, phase: 'gameover' };
   }
   const [drawn, ...rest] = p.deck;
-  return setP(addLog(state, `${p.name} จั่ว [${drawn.data.name}]`), { ...p, deck: rest, hand: [...p.hand, drawn] });
+  return setP(addLog(state, `${p.name} draws [${drawn.data.name}]`), { ...p, deck: rest, hand: [...p.hand, drawn] });
+}
+
+function runTriggeredEffects(state: GameState, owner: PlayerId, trigger: EffectTrigger, eventSource?: CardInstance): GameState {
+  let s = state;
+  const p = getP(s, owner);
+  for (const source of p.field) {
+    if (source.silenced || source.data.effect?.trigger !== trigger) continue;
+    s = runEffect({ state: s, source, sourceOwner: owner, targetIid: eventSource?.iid });
+  }
+  return s;
 }
 
 export function startTurn(state: GameState): GameState {
   const p = getP(state, state.active);
-  // Untap units, remove atkMod (temporary buffs), refresh energy
-  const newField = p.field.map(c => ({ ...c, isTapped: false, sick: false, atkMod: 0 }));
+  const newField = p.field.map((c) => ({ ...c, isTapped: false, sick: false, atkMod: 0 }));
   const newP = { ...p, field: newField, energy: p.cores + 3, playedCore: false };
   let s = setP(state, newP);
+  s = runTriggeredEffects(s, state.active, 'onTurnStart');
+  s = runTriggeredEffects(s, state.active, 'whileOnField');
   s = drawCard(s);
-  return { ...s, phase: 'main1', message: 'เฟส Main 1 — เล่นไพ่ได้', attackerIids: [], selectedIid: null };
+  return { ...s, phase: 'main1', message: 'Main 1 - play cards', attackerIids: [], selectedIid: null };
 }
 
 export function needsTarget(data: CardData): 'friendly' | 'enemy' | 'none' {
-  const id = data.effect?.effectId ?? '';
-  if (id === 'damage_unit_5') return 'enemy';
-  if (id === 'boost_atk_3' || id === 'stat_atk_3' || id === 'stat_def_3' || id === 'stat_atk_2_def_2') return 'friendly';
-  return 'none';
+  const target = data.effect?.target ?? getEffectTarget(data.effect?.effectId);
+  return target === 'friendly' || target === 'enemy' ? target : 'none';
 }
 
 export function canPlay(state: GameState, inst: CardInstance): boolean {
@@ -97,111 +127,46 @@ export function canPlay(state: GameState, inst: CardInstance): boolean {
   if (p.energy < inst.data.cost) return false;
   if (inst.data.type === 'unit' && p.field.length >= 5) return false;
   if (inst.data.type === 'core' && p.playedCore) return false;
-  const mainPhase = state.phase === 'main1' || state.phase === 'main2';
-  if (!mainPhase) return false;
-  return true;
-}
-
-function applyUpgrade(unit: CardInstance, upg: CardInstance): CardInstance {
-  const eid = upg.data.effect?.effectId ?? '';
-  let { atkMod, defMod, currentHp } = unit;
-  if (eid === 'stat_atk_3') atkMod += 3;
-  if (eid === 'stat_def_3') { defMod += 3; currentHp += 3; }
-  if (eid === 'stat_atk_2_def_2') { atkMod += 2; defMod += 2; currentHp += 2; }
-  return { ...unit, atkMod, defMod, currentHp };
-}
-
-function applyEffect(state: GameState, eid: string, targetIid?: string): GameState {
-  switch (eid) {
-    case 'draw1': return drawCard(state);
-    case 'draw2': return drawCard(drawCard(state));
-    case 'haste': return state; // handled at play time
-    case 'heal15': {
-      const p = getP(state, state.active);
-      const hp = Math.min(200, p.hp + 15);
-      return setP(addLog(state, `${p.name} ฟื้นฟู 15 HP (${hp}/200)`), { ...p, hp });
-    }
-    case 'heal_self_20': {
-      const p = getP(state, state.active);
-      const hp = Math.min(200, p.hp + 20);
-      return setP(addLog(state, `${p.name} ฟื้นฟู 20 HP (${hp}/200)`), { ...p, hp });
-    }
-    case 'damage_player_15': {
-      const opp = getOpp(state, state.active);
-      const hp = Math.max(0, opp.hp - 15);
-      let s = setP(addLog(state, `Data Surge ดีล 15 ดาเมจแก่ ${opp.name}! (${hp} HP)`), { ...opp, hp });
-      if (hp <= 0) return { ...s, winner: state.active, phase: 'gameover' };
-      return s;
-    }
-    case 'damage_unit_5': {
-      if (!targetIid) return state;
-      const opp = getOpp(state, state.active);
-      const idx = opp.field.findIndex(c => c.iid === targetIid);
-      if (idx < 0) return state;
-      const target = opp.field[idx];
-      const newHp = target.currentHp - 5;
-      let s = addLog(state, `System Crash ดีล 5 ดาเมจแก่ ${target.data.name}`);
-      if (newHp <= 0) {
-        s = addLog(s, `${target.data.name} ถูกทำลาย!`);
-        return setP(s, { ...opp, field: opp.field.filter((_, i) => i !== idx), graveyard: [...opp.graveyard, target] });
-      }
-      return setP(s, { ...opp, field: opp.field.map((c, i) => i === idx ? { ...c, currentHp: newHp } : c) });
-    }
-    case 'boost_atk_3': {
-      if (!targetIid) return state;
-      const p = getP(state, state.active);
-      const idx = p.field.findIndex(c => c.iid === targetIid);
-      if (idx < 0) return state;
-      const target = p.field[idx];
-      return setP(addLog(state, `${target.data.name} ได้ +3 ATK ในเทิร์นนี้`), {
-        ...p, field: p.field.map((c, i) => i === idx ? { ...c, atkMod: c.atkMod + 3 } : c)
-      });
-    }
-    default: return state;
-  }
+  return state.phase === 'main1' || state.phase === 'main2';
 }
 
 export function playCard(state: GameState, iid: string, targetIid?: string): GameState {
   const p = getP(state, state.active);
-  const idx = p.hand.findIndex(c => c.iid === iid);
+  const idx = p.hand.findIndex((c) => c.iid === iid);
   if (idx < 0 || !canPlay(state, p.hand[idx])) return state;
 
   const inst = p.hand[idx];
   const newHand = p.hand.filter((_, i) => i !== idx);
-  let newP = { ...p, hand: newHand, energy: p.energy - inst.data.cost };
-  let s = setP(state, newP);
+  let s = setP(state, { ...p, hand: newHand, energy: p.energy - inst.data.cost });
 
   switch (inst.data.type) {
     case 'unit': {
       const unitInst = inst.data.effect?.effectId === 'haste' ? { ...inst, sick: false } : inst;
       const updatedP = getP(s, s.active);
-      s = setP(addLog(s, `${p.name} เรียก [${inst.data.name}] ออกสนาม!`), { ...updatedP, field: [...updatedP.field, unitInst] });
-      s = applyEffect(s, inst.data.effect?.effectId ?? '');
+      s = setP(addLog(s, `${updatedP.name} deploys [${inst.data.name}]`), { ...updatedP, field: [...updatedP.field, unitInst] });
+      if (inst.data.effect?.trigger === 'onPlay') {
+        s = runEffect({ state: s, source: unitInst, sourceOwner: state.active, targetIid });
+      }
       break;
     }
     case 'program': {
       const updatedP = getP(s, s.active);
-      s = setP(s, { ...updatedP, graveyard: [...updatedP.graveyard, inst] });
-      s = addLog(s, `${p.name} ใช้ [${inst.data.name}]!`);
-      s = applyEffect(s, inst.data.effect?.effectId ?? '', targetIid);
+      s = setP(addLog(s, `${updatedP.name} runs [${inst.data.name}]`), { ...updatedP, graveyard: [...updatedP.graveyard, inst] });
+      if (inst.data.effect?.trigger === 'onPlay') {
+        s = runEffect({ state: s, source: inst, sourceOwner: state.active, targetIid });
+      }
       break;
     }
     case 'upgrade': {
-      if (!targetIid) return state;
+      if (needsTarget(inst.data) !== 'none' && !targetIid) return state;
       const updatedP = getP(s, s.active);
-      const tidx = updatedP.field.findIndex(c => c.iid === targetIid);
-      if (tidx < 0) return state;
-      const upgraded = applyUpgrade(updatedP.field[tidx], inst);
-      s = setP(addLog(s, `${p.name} ติด [${inst.data.name}] กับ ${updatedP.field[tidx].data.name}`), {
-        ...updatedP,
-        field: updatedP.field.map((c, i) => i === tidx ? upgraded : c),
-        graveyard: [...updatedP.graveyard, inst],
-      });
+      s = setP(addLog(s, `${updatedP.name} installs [${inst.data.name}]`), { ...updatedP, graveyard: [...updatedP.graveyard, inst] });
+      s = runEffect({ state: s, source: inst, sourceOwner: state.active, targetIid });
       break;
     }
     case 'core': {
       const updatedP = getP(s, s.active);
-      s = setP(addLog(s, `${p.name} วาง [${inst.data.name}] — พลังงานสูงสุด +1`), {
+      s = setP(addLog(s, `${updatedP.name} powers up [${inst.data.name}]`), {
         ...updatedP,
         cores: updatedP.cores + 1,
         energy: updatedP.energy + 1,
@@ -215,54 +180,69 @@ export function playCard(state: GameState, iid: string, targetIid?: string): Gam
   return { ...s, selectedIid: null };
 }
 
+function moveDeadToGraveyard(state: GameState, owner: PlayerId): GameState {
+  const p = getP(state, owner);
+  const dead = p.field.filter((card) => card.currentHp <= 0);
+  if (dead.length === 0) return state;
+  let s = state;
+  for (const unit of dead) {
+    s = addLog(s, `${unit.data.name} destroyed`);
+    if (unit.data.effect?.trigger === 'onDeath' && !unit.silenced) {
+      s = runEffect({ state: s, source: unit, sourceOwner: owner });
+    }
+  }
+  const updated = getP(s, owner);
+  return setP(s, {
+    ...updated,
+    field: updated.field.filter((card) => card.currentHp > 0),
+    graveyard: [...updated.graveyard, ...dead],
+  });
+}
+
+function legalAttackTargets(def: PlayerState): CardInstance[] {
+  const taunts = def.field.filter((unit) => unit.taunt && !unit.silenced);
+  return taunts.length > 0 ? taunts : def.field;
+}
+
 function resolveCombat(state: GameState, attackerId: string, targetId: string | 'direct'): GameState {
   const attOwner = state.active;
-  const defOwner: PlayerId = state.active === 'player' ? 'ai' : 'player';
-  let attPlayer = getP(state, attOwner);
-  let defPlayer = getP(state, defOwner);
+  const defOwner = other(attOwner);
+  const attPlayer = getP(state, attOwner);
+  const defPlayer = getP(state, defOwner);
+  const attacker = attPlayer.field.find((c) => c.iid === attackerId);
+  if (!attacker) return state;
 
-  const attIdx = attPlayer.field.findIndex(c => c.iid === attackerId);
-  if (attIdx < 0) return state;
-  const attacker = attPlayer.field[attIdx];
+  let s = runTriggeredEffects(state, attOwner, 'onAttack', attacker);
 
   if (targetId === 'direct') {
+    const def = getP(s, defOwner);
+    if (legalAttackTargets(def).length > 0) return s;
     const dmg = getAtk(attacker);
-    const newHp = Math.max(0, defPlayer.hp - dmg);
-    let s = addLog(state, `${attacker.data.name} โจมตีตรง → ${defPlayer.name} เสีย ${dmg} HP! (${newHp} HP เหลือ)`);
-    s = setP(s, { ...defPlayer, hp: newHp });
+    const hp = Math.max(0, def.hp - dmg);
+    s = setP(addLog(s, `${attacker.data.name} attacks direct for ${dmg}`), { ...def, hp });
     const updatedAtt = getP(s, attOwner);
-    s = setP(s, { ...updatedAtt, field: updatedAtt.field.map((c, i) => i === attIdx ? { ...c, isTapped: true } : c) });
-    if (newHp <= 0) return { ...s, winner: attOwner, phase: 'gameover' };
-    return s;
+    s = setP(s, { ...updatedAtt, field: updatedAtt.field.map((c) => (c.iid === attackerId ? { ...c, isTapped: true } : c)) });
+    return hp <= 0 ? { ...s, winner: attOwner, phase: 'gameover' } : s;
   }
 
-  const defIdx = defPlayer.field.findIndex(c => c.iid === targetId);
-  if (defIdx < 0) return state;
-  const defender = defPlayer.field[defIdx];
+  const target = defPlayer.field.find((c) => c.iid === targetId);
+  if (!target) return s;
+  const legal = legalAttackTargets(defPlayer);
+  if (legal.length > 0 && !legal.some((unit) => unit.iid === targetId)) return s;
 
   const atkDmg = getAtk(attacker);
-  const ctrDmg = getAtk(defender);
-  const newAttHp = attacker.currentHp - ctrDmg;
-  const newDefHp = defender.currentHp - atkDmg;
-
-  let s = addLog(state, `${attacker.data.name} [ATK:${atkDmg}] ⚔️  ${defender.data.name} [ATK:${ctrDmg}]`);
-
-  const tappedAtt = { ...attacker, currentHp: newAttHp, isTapped: true };
-  let newAttField = attPlayer.field.map((c, i) => i === attIdx ? tappedAtt : c);
-  if (newAttHp <= 0) {
-    s = addLog(s, `${attacker.data.name} ถูกทำลาย!`);
-    newAttField = newAttField.filter((_, i) => i !== attIdx);
-  }
-
-  const hitDef = { ...defender, currentHp: newDefHp };
-  let newDefField = defPlayer.field.map((c, i) => i === defIdx ? hitDef : c);
-  if (newDefHp <= 0) {
-    s = addLog(s, `${defender.data.name} ถูกทำลาย!`);
-    newDefField = newDefField.filter((_, i) => i !== defIdx);
-  }
-
-  s = setP(s, { ...attPlayer, field: newAttField });
-  s = setP(s, { ...defPlayer, field: newDefField });
+  const ctrDmg = getAtk(target);
+  s = addLog(s, `${attacker.data.name} [ATK:${atkDmg}] attacks ${target.data.name} [ATK:${ctrDmg}]`);
+  s = setP(s, {
+    ...getP(s, attOwner),
+    field: getP(s, attOwner).field.map((c) => (c.iid === attackerId ? { ...c, currentHp: c.currentHp - ctrDmg, isTapped: true } : c)),
+  });
+  s = setP(s, {
+    ...getP(s, defOwner),
+    field: getP(s, defOwner).field.map((c) => (c.iid === targetId ? { ...c, currentHp: c.currentHp - atkDmg } : c)),
+  });
+  s = moveDeadToGraveyard(s, attOwner);
+  s = moveDeadToGraveyard(s, defOwner);
   return s;
 }
 
@@ -271,9 +251,10 @@ export function executeAttacks(state: GameState): GameState {
   for (const attackerId of s.attackerIids) {
     if (s.winner) break;
     const att = getP(s, s.active);
-    if (!att.field.some(c => c.iid === attackerId)) continue;
+    if (!att.field.some((c) => c.iid === attackerId)) continue;
     const def = getOpp(s, s.active);
-    const target = def.field.length === 0 ? 'direct' : def.field.slice().sort((a, b) => a.currentHp - b.currentHp)[0].iid;
+    const legalTargets = legalAttackTargets(def);
+    const target = legalTargets.length === 0 ? 'direct' : legalTargets.slice().sort((a, b) => a.currentHp - b.currentHp)[0].iid;
     s = resolveCombat(s, attackerId, target);
   }
   return { ...s, attackerIids: [] };
@@ -281,82 +262,102 @@ export function executeAttacks(state: GameState): GameState {
 
 export function toggleAttacker(state: GameState, iid: string): GameState {
   const p = getP(state, state.active);
-  const unit = p.field.find(c => c.iid === iid);
+  const unit = p.field.find((c) => c.iid === iid);
   if (!unit || unit.isTapped || unit.sick) return state;
   const already = state.attackerIids.includes(iid);
-  return { ...state, attackerIids: already ? state.attackerIids.filter(id => id !== iid) : [...state.attackerIids, iid] };
+  return { ...state, attackerIids: already ? state.attackerIids.filter((id) => id !== iid) : [...state.attackerIids, iid] };
 }
 
 export function advancePhase(state: GameState): GameState {
   switch (state.phase) {
-    case 'main1': return { ...state, phase: 'order', message: 'เฟส Order — เลือกยูนิตที่จะโจมตี', selectedIid: null };
+    case 'main1':
+      return { ...state, phase: 'order', message: 'Order - choose attackers', selectedIid: null };
     case 'order': {
       if (state.attackerIids.length === 0) {
-        return { ...state, phase: 'main2', message: 'เฟส Main 2 — เล่นไพ่เพิ่มเติมได้', selectedIid: null };
+        return { ...state, phase: 'main2', message: 'Main 2 - play more cards', selectedIid: null };
       }
-      let s = executeAttacks({ ...state, phase: 'battle' });
+      const s = executeAttacks({ ...state, phase: 'battle' });
       if (s.winner) return s;
-      return { ...s, phase: 'main2', message: 'เฟส Main 2 — เล่นไพ่เพิ่มเติมได้', selectedIid: null };
+      return { ...s, phase: 'main2', message: 'Main 2 - play more cards', selectedIid: null };
     }
     case 'main2': {
-      // End turn: switch active player
-      const nextActive: PlayerId = state.active === 'player' ? 'ai' : 'player';
+      let s = runTriggeredEffects(state, state.active, 'onTurnEnd');
+      const nextActive = other(state.active);
       const nextTurn = state.turn + (nextActive === 'player' ? 1 : 0);
-      const nextLabel = nextActive === 'player' ? `ผู้เล่น (เทิร์น ${nextTurn})` : 'AI';
-      let s = addLog(state, `--- เทิร์นของ ${nextLabel} ---`);
-      s = { ...s, active: nextActive, turn: nextTurn, phase: 'draw', message: `เทิร์น ${nextActive}`, selectedIid: null, attackerIids: [] };
-      s = startTurn(s);
-      return s;
+      s = addLog(s, `--- ${nextActive === 'player' ? `Player turn ${nextTurn}` : 'AI turn'} ---`);
+      s = { ...s, active: nextActive, turn: nextTurn, phase: 'draw', message: `${nextActive} turn`, selectedIid: null, attackerIids: [] };
+      return startTurn(s);
     }
-    default: return state;
+    default:
+      return state;
   }
 }
 
-// ─── AI ───────────────────────────────────────────────────────────────────────
+function chooseTargetForEffect(state: GameState, card: CardInstance, owner: PlayerId): string | undefined {
+  const targetType = needsTarget(card.data);
+  if (targetType === 'enemy') {
+    const targets = legalAttackTargets(getP(state, other(owner)));
+    return (targets.length > 0 ? targets : getP(state, other(owner)).field).slice().sort((a, b) => a.currentHp - b.currentHp)[0]?.iid;
+  }
+  if (targetType === 'friendly') {
+    return getP(state, owner).field.slice().sort((a, b) => getAtk(b) - getAtk(a))[0]?.iid;
+  }
+  return undefined;
+}
 
-export function runAiTurn(state: GameState): GameState {
+function playAiCards(state: GameState, level: AiLevel): GameState {
   let s = state;
-
-  // Play core first
-  const core = s.ai.hand.find(c => c.data.type === 'core' && !s.ai.playedCore);
+  const reserveEnergy = level === 'hard' && s.ai.hand.some((card) => card.data.type === 'program') ? 1 : 0;
+  const core = s.ai.hand.find((card) => card.data.type === 'core' && !s.ai.playedCore);
   if (core && canPlay(s, core)) s = playCard(s, core.iid);
 
-  // Play units by cost desc
-  const units = [...s.ai.hand].filter(c => c.data.type === 'unit').sort((a, b) => b.data.cost - a.data.cost);
-  for (const u of units) {
-    if (canPlay(s, u)) s = playCard(s, u.iid);
-  }
+  const hand = () => [...s.ai.hand].filter((card) => canPlay(s, card));
+  const sortByLevel = (cards: CardInstance[]) =>
+    cards.sort((a, b) => (level === 'easy' ? a.data.cost - b.data.cost : b.data.cost - a.data.cost));
 
-  // Play programs (no target or pick first enemy unit)
-  const progs = s.ai.hand.filter(c => c.data.type === 'program');
-  for (const pg of progs) {
-    if (!canPlay(s, pg)) continue;
-    const eid = pg.data.effect?.effectId ?? '';
-    if (eid === 'damage_unit_5' && s.player.field.length > 0) {
-      const target = s.player.field.slice().sort((a, b) => a.currentHp - b.currentHp)[0];
-      s = playCard(s, pg.iid, target.iid);
-    } else if (eid !== 'damage_unit_5' && eid !== 'boost_atk_3') {
-      s = playCard(s, pg.iid);
-    } else if (eid === 'boost_atk_3' && s.ai.field.length > 0) {
-      const bestUnit = s.ai.field.slice().sort((a, b) => getAtk(b) - getAtk(a))[0];
-      s = playCard(s, pg.iid, bestUnit.iid);
+  for (const card of sortByLevel(hand())) {
+    if (!canPlay(s, card)) continue;
+    if (level === 'hard' && card.data.type === 'unit' && s.ai.energy - card.data.cost < reserveEnergy) continue;
+    const target = chooseTargetForEffect(s, card, 'ai');
+    if (needsTarget(card.data) !== 'none' && !target) continue;
+    s = playCard(s, card.iid, target);
+  }
+  return s;
+}
+
+function chooseHardAttackers(state: GameState): GameState {
+  let s: GameState = { ...state, phase: 'order', attackerIids: [] };
+  const defenders = legalAttackTargets(s.player);
+  for (const unit of s.ai.field) {
+    if (unit.sick || unit.isTapped) continue;
+    if (defenders.length === 0) {
+      s = toggleAttacker(s, unit.iid);
+      continue;
+    }
+    const profitable = defenders.some((def) => getAtk(unit) >= def.currentHp && unit.currentHp > getAtk(def));
+    const lethal = getAtk(unit) >= s.player.hp;
+    if (profitable || lethal) s = toggleAttacker(s, unit.iid);
+  }
+  return s;
+}
+
+export function runAiTurn(state: GameState, level: AiLevel = 'normal'): GameState {
+  let s = playAiCards(state, level);
+  s = level === 'hard' ? chooseHardAttackers(s) : { ...s, phase: 'order', attackerIids: [] };
+
+  if (level !== 'hard') {
+    for (const unit of s.ai.field) {
+      if (!unit.sick && !unit.isTapped) s = toggleAttacker(s, unit.iid);
+      if (level === 'easy' && s.attackerIids.length >= 1) break;
     }
   }
 
-  // Declare all valid attackers
-  s = { ...s, phase: 'order' };
-  for (const u of s.ai.field) {
-    if (!u.sick && !u.isTapped) s = toggleAttacker(s, u.iid);
-  }
-
-  // Execute battle
   s = executeAttacks(s);
   if (s.winner) return s;
 
-  // End AI turn → switch to player
+  s = runTriggeredEffects(s, 'ai', 'onTurnEnd');
   const nextTurn = s.turn + 1;
-  s = addLog(s, `--- เทิร์นที่ ${nextTurn} ของผู้เล่น ---`);
-  s = { ...s, active: 'player', turn: nextTurn, phase: 'draw', message: 'เทิร์นของคุณ', selectedIid: null, attackerIids: [] };
-  s = startTurn(s);
-  return s;
+  s = addLog(s, `--- Player turn ${nextTurn} ---`);
+  s = { ...s, active: 'player', turn: nextTurn, phase: 'draw', message: 'Your turn', selectedIid: null, attackerIids: [] };
+  return startTurn(s);
 }

@@ -2,11 +2,16 @@ export type CardType = 'unit' | 'program' | 'upgrade' | 'core';
 export type Faction = 'steel' | 'circuit' | 'plasma' | 'void';
 export type GamePhase = 'draw' | 'main1' | 'order' | 'battle' | 'main2' | 'end' | 'gameover';
 export type PlayerId = 'player' | 'ai';
+export type AiLevel = 'easy' | 'normal' | 'hard';
+export type EffectTrigger = 'onPlay' | 'onDeath' | 'onAttack' | 'onTurnStart' | 'onTurnEnd' | 'whileOnField' | 'passive';
+export type EffectTarget = 'friendly' | 'enemy' | 'any' | 'none';
 
 export interface CardEffect {
-  trigger: 'onPlay' | 'passive';
+  trigger: EffectTrigger;
   description: string;
   effectId: string;
+  amount?: number;
+  target?: EffectTarget;
 }
 
 export interface CardData {
@@ -33,6 +38,8 @@ export interface CardInstance {
   sick: boolean;
   atkMod: number;
   defMod: number;
+  silenced?: boolean;
+  taunt?: boolean;
 }
 
 export interface PlayerState {
@@ -60,4 +67,10 @@ export interface GameState {
   winner: PlayerId | null;
   message: string;
   busy: boolean;
+}
+
+export interface GameOptions {
+  playerDeckIds?: string[];
+  aiDeckIds?: string[];
+  aiLevel?: AiLevel;
 }
