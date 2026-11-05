@@ -1,3 +1,4 @@
+import { MAX_HP } from '../gameTypes';
 import type { CardInstance, EffectTarget, GameState, PlayerId, PlayerState } from '../gameTypes';
 
 export interface EffectContext {
@@ -108,9 +109,9 @@ export const effects: Record<string, EffectDefinition> = {
   draw1: definition('none', ({ state, sourceOwner }) => drawCard(state, sourceOwner)),
   draw2: definition('none', ({ state, sourceOwner }) => drawCard(drawCard(state, sourceOwner), sourceOwner)),
   haste: definition('none', ({ state }) => state),
-  heal15: definition('none', ({ state, sourceOwner }) => healPlayer(state, sourceOwner, 15)),
-  heal_self_20: definition('none', ({ state, sourceOwner }) => healPlayer(state, sourceOwner, 20)),
-  damage_player_15: definition('none', ({ state, sourceOwner }) => damagePlayer(state, opponent(sourceOwner), 15, sourceOwner)),
+  heal_player: definition('none', ({ state, sourceOwner, amount }) => healPlayer(state, sourceOwner, amount ?? 3)),
+  damage_player: definition('none', ({ state, sourceOwner, amount }) => damagePlayer(state, opponent(sourceOwner), amount ?? 3, sourceOwner)),
+  add_core: definition('none', ({ state, sourceOwner }) => addCore(state, sourceOwner)),
   damage_unit_5: definition('enemy', ({ state, targetIid }) => damageUnit(state, targetIid, 5)),
   boost_atk_3: definition('friendly', ({ state, targetIid }) => buffUnit(state, targetIid, 3, 0)),
   stat_atk_3: definition('friendly', ({ state, targetIid }) => buffUnit(state, targetIid, 3, 0)),
@@ -140,8 +141,13 @@ export const effects: Record<string, EffectDefinition> = {
 
 function healPlayer(state: GameState, who: PlayerId, amount: number): GameState {
   const p = getP(state, who);
-  const hp = Math.min(200, p.hp + amount);
-  return setP(addLog(state, `${p.name} heals ${amount} HP (${hp}/200)`), { ...p, hp });
+  const hp = Math.min(MAX_HP, p.hp + amount);
+  return setP(addLog(state, `${p.name} heals ${amount} HP (${hp}/${MAX_HP})`), { ...p, hp });
+}
+
+function addCore(state: GameState, who: PlayerId): GameState {
+  const p = getP(state, who);
+  return setP(state, { ...p, cores: p.cores + 1, energy: p.energy + 1 });
 }
 
 function damagePlayer(state: GameState, who: PlayerId, amount: number, sourceOwner: PlayerId): GameState {

@@ -1,5 +1,5 @@
 {
-  "name": "ICT Inventory System",
-  "description": "A system for checking and managing iPad and other ICT equipment inventory for students and teachers.",
+  "name": "Robot Arcana",
+  "description": "A turn-based robot card battle game themed on tarot arcana, played against an AI opponent with a custom deck builder.",
   "requestFramePermissions": []
 }

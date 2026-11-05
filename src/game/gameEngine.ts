@@ -1,3 +1,4 @@
+import { MAX_HP } from './gameTypes';
 import type { AiLevel, CardData, CardInstance, EffectTrigger, GameOptions, GameState, PlayerId, PlayerState } from './gameTypes';
 import { buildDeckFromIds, buildStarterDeck } from './cardDatabase';
 import { getEffectTarget, runEffect } from './effects';
@@ -30,7 +31,7 @@ function shuffle<T>(arr: T[]): T[] {
 function makePlayer(id: PlayerId, name: string, deckData: CardData[]): PlayerState {
   const deck = shuffle(deckData).map(makeInstance);
   const hand = deck.splice(0, 5);
-  return { id, name, hp: 200, cores: 0, energy: 0, playedCore: false, hand, deck, graveyard: [], field: [] };
+  return { id, name, hp: MAX_HP, cores: 0, energy: 0, playedCore: false, hand, deck, graveyard: [], field: [] };
 }
 
 export function initGame(options: GameOptions = {}): GameState {
@@ -44,6 +45,7 @@ export function initGame(options: GameOptions = {}): GameState {
     ai: aiState,
     selectedIid: null,
     attackerIids: [],
+    attackTargets: {},
     log: ['[ Game start ] - Player turn 1'],
     winner: null,
     message: 'Draw phase - continue to draw',
@@ -113,8 +115,22 @@ export function startTurn(state: GameState): GameState {
   let s = setP(state, newP);
   s = runTriggeredEffects(s, state.active, 'onTurnStart');
   s = runTriggeredEffects(s, state.active, 'whileOnField');
-  s = drawCard(s);
-  return { ...s, phase: 'main1', message: 'Main 1 - play cards', attackerIids: [], selectedIid: null };
+  const skipsDraw = state.turn === 1 && state.active === 'player';
+  const message = skipsDraw ? 'Draw phase - first turn, no draw' : 'Draw phase - draw a card';
+  return { ...s, phase: 'draw', message, attackerIids: [], attackTargets: {}, selectedIid: null };
+}
+
+// The first player skips the draw on turn 1 to offset going first.
+export function drawPhase(state: GameState): GameState {
+  if (state.phase !== 'draw') return state;
+  let s = state;
+  if (state.turn === 1 && state.active === 'player') {
+    s = addLog(s, `${getP(s, s.active).name} skips the first draw`);
+  } else {
+    s = drawCard(s);
+    if (s.winner) return s;
+  }
+  return { ...s, phase: 'main1', message: 'Main 1 - play cards' };
 }
 
 export function needsTarget(data: CardData): 'friendly' | 'enemy' | 'none' {
@@ -168,11 +184,10 @@ export function playCard(state: GameState, iid: string, targetIid?: string): Gam
       const updatedP = getP(s, s.active);
       s = setP(addLog(s, `${updatedP.name} powers up [${inst.data.name}]`), {
         ...updatedP,
-        cores: updatedP.cores + 1,
-        energy: updatedP.energy + 1,
         playedCore: true,
         graveyard: [...updatedP.graveyard, inst],
       });
+      s = runEffect({ state: s, source: inst, sourceOwner: state.active });
       break;
     }
   }
@@ -254,22 +269,60 @@ export function executeAttacks(state: GameState): GameState {
     if (!att.field.some((c) => c.iid === attackerId)) continue;
     const def = getOpp(s, s.active);
     const legalTargets = legalAttackTargets(def);
-    const target = legalTargets.length === 0 ? 'direct' : legalTargets.slice().sort((a, b) => a.currentHp - b.currentHp)[0].iid;
+    const chosen = s.attackTargets[attackerId];
+    const target =
+      legalTargets.length === 0
+        ? 'direct'
+        : legalTargets.some((unit) => unit.iid === chosen)
+          ? chosen
+          : legalTargets.slice().sort((a, b) => a.currentHp - b.currentHp)[0].iid;
     s = resolveCombat(s, attackerId, target);
   }
-  return { ...s, attackerIids: [] };
+  return { ...s, attackerIids: [], attackTargets: {} };
 }
 
 export function toggleAttacker(state: GameState, iid: string): GameState {
   const p = getP(state, state.active);
   const unit = p.field.find((c) => c.iid === iid);
   if (!unit || unit.isTapped || unit.sick) return state;
-  const already = state.attackerIids.includes(iid);
-  return { ...state, attackerIids: already ? state.attackerIids.filter((id) => id !== iid) : [...state.attackerIids, iid] };
+  if (state.attackerIids.includes(iid)) {
+    const attackTargets = { ...state.attackTargets };
+    delete attackTargets[iid];
+    return { ...state, attackerIids: state.attackerIids.filter((id) => id !== iid), attackTargets };
+  }
+  return { ...state, attackerIids: [...state.attackerIids, iid] };
+}
+
+export function canBeAttackTarget(state: GameState, targetIid: string): boolean {
+  return legalAttackTargets(getOpp(state, state.active)).some((unit) => unit.iid === targetIid);
+}
+
+export function setAttackTarget(state: GameState, attackerIid: string, targetIid: string): GameState {
+  if (state.phase !== 'order' || !state.attackerIids.includes(attackerIid)) return state;
+  if (!canBeAttackTarget(state, targetIid)) return state;
+  return { ...state, attackTargets: { ...state.attackTargets, [attackerIid]: targetIid } };
+}
+
+// Order-phase click on one of your own units: declare it as an attacker and select it
+// for targeting, select an already-declared attacker, or cancel the selected one.
+export function chooseAttacker(state: GameState, iid: string): GameState {
+  if (state.phase !== 'order') return state;
+  if (!state.attackerIids.includes(iid)) {
+    const s = toggleAttacker(state, iid);
+    if (s === state) return state;
+    const hasTargets = legalAttackTargets(getOpp(s, s.active)).length > 0;
+    return { ...s, selectedIid: iid, message: hasTargets ? 'Order - click an enemy unit to target' : 'Order - attacks go direct' };
+  }
+  if (state.selectedIid === iid) {
+    return { ...toggleAttacker(state, iid), selectedIid: null, message: 'Order - choose attackers' };
+  }
+  return { ...state, selectedIid: iid, message: 'Order - click an enemy unit to target' };
 }
 
 export function advancePhase(state: GameState): GameState {
   switch (state.phase) {
+    case 'draw':
+      return drawPhase(state);
     case 'main1':
       return { ...state, phase: 'order', message: 'Order - choose attackers', selectedIid: null };
     case 'order': {
@@ -285,7 +338,7 @@ export function advancePhase(state: GameState): GameState {
       const nextActive = other(state.active);
       const nextTurn = state.turn + (nextActive === 'player' ? 1 : 0);
       s = addLog(s, `--- ${nextActive === 'player' ? `Player turn ${nextTurn}` : 'AI turn'} ---`);
-      s = { ...s, active: nextActive, turn: nextTurn, phase: 'draw', message: `${nextActive} turn`, selectedIid: null, attackerIids: [] };
+      s = { ...s, active: nextActive, turn: nextTurn, phase: 'draw', message: `${nextActive} turn`, selectedIid: null, attackerIids: [], attackTargets: {} };
       return startTurn(s);
     }
     default:
@@ -326,7 +379,7 @@ function playAiCards(state: GameState, level: AiLevel): GameState {
 }
 
 function chooseHardAttackers(state: GameState): GameState {
-  let s: GameState = { ...state, phase: 'order', attackerIids: [] };
+  let s: GameState = { ...state, phase: 'order', attackerIids: [], attackTargets: {} };
   const defenders = legalAttackTargets(s.player);
   for (const unit of s.ai.field) {
     if (unit.sick || unit.isTapped) continue;
@@ -334,16 +387,19 @@ function chooseHardAttackers(state: GameState): GameState {
       s = toggleAttacker(s, unit.iid);
       continue;
     }
-    const profitable = defenders.some((def) => getAtk(unit) >= def.currentHp && unit.currentHp > getAtk(def));
+    const profitable = defenders.find((def) => getAtk(unit) >= def.currentHp && unit.currentHp > getAtk(def));
     const lethal = getAtk(unit) >= s.player.hp;
     if (profitable || lethal) s = toggleAttacker(s, unit.iid);
+    if (profitable) s = setAttackTarget(s, unit.iid, profitable.iid);
   }
   return s;
 }
 
 export function runAiTurn(state: GameState, level: AiLevel = 'normal'): GameState {
-  let s = playAiCards(state, level);
-  s = level === 'hard' ? chooseHardAttackers(s) : { ...s, phase: 'order', attackerIids: [] };
+  let s = drawPhase(state);
+  if (s.winner) return s;
+  s = playAiCards(s, level);
+  s = level === 'hard' ? chooseHardAttackers(s) : { ...s, phase: 'order', attackerIids: [], attackTargets: {} };
 
   if (level !== 'hard') {
     for (const unit of s.ai.field) {
@@ -358,6 +414,6 @@ export function runAiTurn(state: GameState, level: AiLevel = 'normal'): GameStat
   s = runTriggeredEffects(s, 'ai', 'onTurnEnd');
   const nextTurn = s.turn + 1;
   s = addLog(s, `--- Player turn ${nextTurn} ---`);
-  s = { ...s, active: 'player', turn: nextTurn, phase: 'draw', message: 'Your turn', selectedIid: null, attackerIids: [] };
+  s = { ...s, active: 'player', turn: nextTurn, phase: 'draw', message: 'Your turn', selectedIid: null, attackerIids: [], attackTargets: {} };
   return startTurn(s);
 }

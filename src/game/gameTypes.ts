@@ -1,3 +1,5 @@
+export const MAX_HP = 30;
+
 export type CardType = 'unit' | 'program' | 'upgrade' | 'core';
 export type Faction = 'steel' | 'circuit' | 'plasma' | 'void';
 export type GamePhase = 'draw' | 'main1' | 'order' | 'battle' | 'main2' | 'end' | 'gameover';
@@ -63,6 +65,8 @@ export interface GameState {
   ai: PlayerState;
   selectedIid: string | null;
   attackerIids: string[];
+  // attacker iid -> chosen enemy unit iid; attackers without an entry pick automatically
+  attackTargets: Record<string, string>;
   log: string[];
   winner: PlayerId | null;
   message: string;

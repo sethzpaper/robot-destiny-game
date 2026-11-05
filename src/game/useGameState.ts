@@ -1,6 +1,6 @@
 import { useReducer, useCallback, useEffect, useRef } from 'react';
 import { GameOptions, GameState } from './gameTypes';
-import { initGame, startTurn, playCard, toggleAttacker, advancePhase, runAiTurn, needsTarget } from './gameEngine';
+import { initGame, startTurn, playCard, toggleAttacker, chooseAttacker, setAttackTarget, advancePhase, runAiTurn, needsTarget } from './gameEngine';
 
 type Action =
   | { type: 'INIT'; options?: GameOptions }
@@ -8,6 +8,8 @@ type Action =
   | { type: 'SELECT'; iid: string | null }
   | { type: 'PLAY_CARD'; iid: string; targetIid?: string }
   | { type: 'TOGGLE_ATTACKER'; iid: string }
+  | { type: 'CHOOSE_ATTACKER'; iid: string }
+  | { type: 'SET_ATTACK_TARGET'; attackerIid: string; targetIid: string }
   | { type: 'ADVANCE' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -23,18 +25,15 @@ function reducer(state: GameState, action: Action): GameState {
     case 'SELECT': return { ...state, selectedIid: action.iid };
     case 'PLAY_CARD': return playCard(state, action.iid, action.targetIid);
     case 'TOGGLE_ATTACKER': return toggleAttacker(state, action.iid);
-    case 'ADVANCE': {
-      if (state.phase === 'draw') return startTurn(state);
-      return advancePhase(state);
-    }
+    case 'CHOOSE_ATTACKER': return chooseAttacker(state, action.iid);
+    case 'SET_ATTACK_TARGET': return setAttackTarget(state, action.attackerIid, action.targetIid);
+    case 'ADVANCE': return advancePhase(state);
     default: return state;
   }
 }
 
 export function useGameState(options: GameOptions = {}) {
-  const init = initGame(options);
-  const firstTurn = startTurn(init);
-  const [state, dispatch] = useReducer(reducer, firstTurn);
+  const [state, dispatch] = useReducer(reducer, options, (opts) => startTurn(initGame(opts)));
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Run AI turn after a short delay when it's AI's turn
@@ -100,8 +99,12 @@ export function useGameState(options: GameOptions = {}) {
 
     const sel = state.selectedIid;
 
-    if (state.phase === 'order' && owner === 'player') {
-      toggleAtt(iid);
+    if (state.phase === 'order') {
+      if (owner === 'player') {
+        dispatch({ type: 'CHOOSE_ATTACKER', iid });
+      } else if (sel && state.attackerIids.includes(sel)) {
+        dispatch({ type: 'SET_ATTACK_TARGET', attackerIid: sel, targetIid: iid });
+      }
       return;
     }
 
@@ -113,7 +116,7 @@ export function useGameState(options: GameOptions = {}) {
         dispatch({ type: 'PLAY_CARD', iid: sel, targetIid: iid });
       }
     }
-  }, [state, toggleAtt]);
+  }, [state]);
 
   return { state, selectCard, advance, toggleAtt, handleCardClick, handleFieldClick, restart };
 }

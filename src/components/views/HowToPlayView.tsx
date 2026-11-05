@@ -7,7 +7,7 @@ interface Props {
 const PHASES: { name: string; desc: string }[] = [
   { name: 'Draw', desc: 'จั่วการ์ดและฟื้นฟูพลังงาน' },
   { name: 'Main 1', desc: 'วางยูนิต/ใช้โปรแกรม/ติดอัปเกรด' },
-  { name: 'Order', desc: 'เลือกยูนิตที่จะโจมตี' },
+  { name: 'Order', desc: 'เลือกยูนิตที่จะโจมตี แล้วคลิกยูนิตศัตรูเพื่อเลือกเป้า' },
   { name: 'Battle', desc: 'แลกดาเมจ ตรวจสอบความตาย' },
   { name: 'Main 2', desc: 'เล่นการ์ดเพิ่มหลังต่อสู้' },
   { name: 'End', desc: 'จบเทิร์น ส่งสิทธิ์ให้ฝ่ายตรงข้าม' },
@@ -29,7 +29,7 @@ export default function HowToPlayView({ onBack }: Props) {
           <h3 className="text-2xl md:text-3xl font-black italic uppercase">พื้นฐาน</h3>
         </div>
         <p className="text-gray-400 font-mono text-xs leading-relaxed uppercase tracking-widest">
-          เด็คมีการ์ด 30 ใบ ผู้เล่นเริ่มด้วย HP 200 และจั่ว 5 ใบ ใครทำให้คู่แข่ง HP เหลือ 0 ก่อนคือผู้ชนะ — สนามวางได้ฝ่ายละ 5 ยูนิต
+          เด็คมีการ์ด 30 ใบ ผู้เล่นเริ่มด้วย HP 30 และจั่ว 5 ใบ (ผู้เล่นที่เริ่มก่อนไม่จั่วในเทิร์นแรก) ใครทำให้คู่แข่ง HP เหลือ 0 ก่อนคือผู้ชนะ — สนามวางได้ฝ่ายละ 5 ยูนิต
         </p>
         <div className="bg-[#1a1a1e] border border-white/5 rounded-3xl p-8 flex items-center justify-center gap-4 md:gap-8 shadow-2xl flex-wrap">
           <div className="w-20 h-28 md:w-24 md:h-32 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-[10px] text-white/30 uppercase">Hand</div>
