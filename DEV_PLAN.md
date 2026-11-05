@@ -4,9 +4,6 @@
 - **Engine** จาก `robot-destiny-game` (เดิม) — ระบบเกมเชิงลึก
 - **UI/UX** จาก `Robocard-evolution` — ดีไซน์ cyberpunk + framer-motion
 
-> หมายเหตุ: ตอนนี้โปรเจกต์ `robot-destiny-game` มีระบบยืม-คืนอุปกรณ์ปนอยู่ (สร้างผิดโฟลเดอร์)
-> Phase 0 จะแยกออก เพื่อให้เหลือเฉพาะการ์ดเกม
-
 ---
 
 ## สถานะปัจจุบัน (Snapshot)
@@ -23,68 +20,6 @@
 - 6 views: landing / colorSelection / howToPlay / showCards / settings / arena
 - ใช้ `framer-motion`, `lucide-react`, สไตล์ neon cyberpunk
 - ศัตรูใช้ `Math.random() * 20 + 10` ใน setTimeout (จะถูกแทนด้วย engine จริง)
-
-### สิ่งที่ต้องลบ/แยกออก
-
-ไฟล์/โฟลเดอร์ที่ไม่ใช่การ์ดเกม:
-- `src/components/` — `Admin.tsx`, `BorrowReturn.tsx`, `Dashboard.tsx`, `Inventory.tsx`, `Login.tsx`, `Layout.tsx`, `Logs.tsx`, `Service.tsx`, `StudentsRegistry.tsx`, `LandingPage.tsx`
-- `src/services/` — `gasService.ts`, `supabaseService.ts`, `supabaseClient.ts` (ของระบบยืม-คืน)
-- `src/types.ts` — type ของ User/Device/Student/Teacher/Transaction/...
-- `src/constants.ts` — translations ของระบบยืม-คืน
-- `server/` — Express + better-sqlite3
-- `csv/` — `students.csv`, `teachers.csv`, etc.
-- `supabase_security.sql`, `supabase_seed.sql`, `code.gs`, `scripts/generate_seed.mjs`
-- `unity-src/` — โฟลเดอร์ Unity (เก็บไว้ก่อนถ้ายังต้องใช้)
-
-ที่เก็บไว้:
-- `src/game/*` ทั้งหมด
-- `src/components/CardGame/*`
-- `src/utils/format.ts` (ถ้า engine ใช้)
-- `index.html`, `vite.config.ts`, `tsconfig.json`, `package.json`
-
----
-
-## Phase 0 — Cleanup & แยกระบบยืม-คืนออก
-
-**เป้าหมาย:** เหลือเฉพาะการ์ดเกมใน `robot-destiny-game/`
-
-### Step 0.1 — ย้ายระบบยืม-คืนออก
-- [ ] สร้างโฟลเดอร์ใหม่ `C:\Driver\Claude\inventory-system\` (หรือชื่อที่ต้องการ)
-- [ ] ย้ายไฟล์ที่เกี่ยวกับยืม-คืนทั้งหมดไปที่นั่น (ดูรายการด้านบน)
-- [ ] ตั้ง `package.json` แยกอันใหม่ของ `inventory-system/`
-- [ ] (ตัวเลือก) `git init` ในโฟลเดอร์ใหม่ เพื่อให้แยกประวัติ
-
-### Step 0.2 — ลบของเหลือใน robot-destiny-game
-- [ ] ลบ `src/components/*` ยกเว้น `CardGame/`
-- [ ] ลบ `src/services/`, `src/types.ts`, `src/constants.ts`
-- [ ] ลบ `server/`, `csv/`, `*.sql`, `*.gs`, `scripts/`
-- [ ] ลบ `unity-src/` (หรือย้ายไป `inventory-system/` ถ้ายังใช้)
-
-### Step 0.3 — ตัด dependency ที่ไม่ใช้
-แก้ `package.json` เอาออก:
-- `@supabase/supabase-js`, `better-sqlite3`, `express`, `papaparse`, `@types/papaparse`, `clsx`, `tailwind-merge`, `concurrently`, `@types/express`
-- `dependencies` แก้ `dev` ให้เหลือแค่ vite (ไม่ต้องรัน server)
-
-```json
-"scripts": {
-  "dev": "vite --port=3000 --host=0.0.0.0",
-  "build": "vite build",
-  "preview": "vite preview",
-  "lint": "tsc --noEmit"
-}
-```
-
-- [ ] รัน `npm install` ใหม่ (หรือลบ `node_modules/` + `package-lock.json` แล้วติดตั้งใหม่)
-- [ ] รัน `npm run lint` ให้ผ่าน (จะมี error เยอะตอนยังไม่แก้ App.tsx — ปกติ)
-
-### Step 0.4 — App.tsx ชั่วคราว
-- [ ] เขียน `App.tsx` ใหม่แบบเล็ก ๆ ที่แค่เรียก `<CardGame />` เพื่อให้ build ผ่าน
-- [ ] รัน `npm run dev` ทดสอบว่าเกมเดิม (ไม่มี UI ใหม่) ยังเล่นได้
-
-**Definition of Done:**
-- รัน `npm run dev` แล้วเข้าเกมเดิมได้ทันที ไม่ผ่านระบบ login
-- `npm run lint` ผ่าน
-- โฟลเดอร์ไม่มีไฟล์ระบบยืม-คืนหลงเหลือ
 
 ---
 
@@ -248,7 +183,7 @@ src/
 
 ## Phase 4 — Supabase (Backend ใหม่)
 
-> ตอนนี้ Supabase ยังไม่ได้สร้าง — ทำแยกจากของระบบยืม-คืน
+> ตอนนี้ Supabase ยังไม่ได้สร้าง
 
 ### Step 4.1 — สร้างโปรเจกต์ Supabase ใหม่
 - [ ] เข้า dashboard.supabase.com → New project ชื่อ `robot-arcana`
@@ -364,14 +299,13 @@ create table user_cards (
 
 ถ้ามีเวลาจำกัด ทำตามลำดับนี้:
 
-1. **Phase 0** (1 วัน) — บังคับ ไม่งั้นโปรเจกต์ปนกันไม่จบ
-2. **Phase 1** (3-5 วัน) — เปลี่ยนหน้าตาเกมให้สวย ใช้ engine จริง
-3. **Phase 2.1 + 2.2** (2-3 วัน) — เพิ่มการ์ดและ effect ให้รู้สึกครบ
-4. **Phase 3.2** (1-2 วัน) — animation combat ทำให้เกมรู้สึกมีชีวิต
-5. **Phase 2.3 + 4** (3-5 วัน) — Deck builder + Supabase auth/save
-6. **Phase 3.1, 3.3** — เสียง + responsive
-7. **Phase 6** (1 วัน) — deploy
-8. **Phase 5** — เก็บไว้ทีหลัง ใหญ่และซับซ้อน
+1. **Phase 1** (3-5 วัน) — เปลี่ยนหน้าตาเกมให้สวย ใช้ engine จริง
+2. **Phase 2.1 + 2.2** (2-3 วัน) — เพิ่มการ์ดและ effect ให้รู้สึกครบ
+3. **Phase 3.2** (1-2 วัน) — animation combat ทำให้เกมรู้สึกมีชีวิต
+4. **Phase 2.3 + 4** (3-5 วัน) — Deck builder + Supabase auth/save
+5. **Phase 3.1, 3.3** — เสียง + responsive
+6. **Phase 6** (1 วัน) — deploy
+7. **Phase 5** — เก็บไว้ทีหลัง ใหญ่และซับซ้อน
 
 ---
 
